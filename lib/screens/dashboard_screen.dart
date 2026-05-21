@@ -56,6 +56,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
     await LeadSyncService.instance.start();
     await _loadStats();
+    // Catch up on any calls that happened while the app was closed.
+    LeadSyncService.instance.syncNow();
   }
 
   Future<bool> _hasConsented() async {
@@ -78,9 +80,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (status.isDenied || status.isRestricted) {
         await Permission.phone.request();
       }
-      final raw = await CallLog.query(
-        dateTimeFrom: DateTime.now().subtract(const Duration(days: 90)),
-      );
+      final now        = DateTime.now();
+      final todayStart = DateTime(now.year, now.month, now.day);
+      final raw = await CallLog.query(dateTimeFrom: todayStart);
       final entries = raw
           .map((e) => StoredCallEntry.fromCallLogEntry(e, ''))
           .toList()
@@ -95,28 +97,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  // ── Computed stats ─────────────────────────────────────────────────────────
+  // ── Computed stats (all from today only) ───────────────────────────────────
 
-  List<StoredCallEntry> get _todayCalls {
-    final today = DateTime.now();
-    final start = DateTime(today.year, today.month, today.day);
-    return _allCalls.where((e) {
-      final dt = DateTime.fromMillisecondsSinceEpoch(e.timestamp);
-      return !dt.isBefore(start);
-    }).toList();
-  }
-
-  int get _totalToday    => _todayCalls.length;
-  int get _missedToday   => _todayCalls.where((e) => e.callType == 'missed').length;
-  int get _incomingToday => _todayCalls.where((e) => e.callType == 'incoming').length;
-  int get _connectedToday => _todayCalls.where(
+  int get _totalToday     => _allCalls.length;
+  int get _missedToday    => _allCalls.where((e) => e.callType == 'missed').length;
+  int get _incomingToday  => _allCalls.where((e) => e.callType == 'incoming').length;
+  int get _connectedToday => _allCalls.where(
       (e) => e.callType == 'incoming' && e.duration > 0).length;
 
-  // Pipeline counts across all calls
-  int get _pipelineNew        => _allCalls.where((e) => e.callType == 'missed').length;
-  int get _pipelineContacted  => _allCalls.where(
+  int get _pipelineNew       => _missedToday;
+  int get _pipelineContacted => _allCalls.where(
       (e) => e.callType == 'incoming' || e.callType == 'outgoing').length;
-  int get _pipelineConverted  => _allCalls.where(
+  int get _pipelineConverted => _allCalls.where(
       (e) => e.callType == 'incoming' && e.duration > 60).length;
 
   // ── Navigation ─────────────────────────────────────────────────────────────
