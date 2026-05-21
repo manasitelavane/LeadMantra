@@ -1,0 +1,47 @@
+name: leadmantracrm
+description: "LeadMantraCRM — WhatsApp-First CRM Built for India."
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: ^3.10.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+  call_log: ^6.0.1
+  permission_handler: ^11.0.0
+  excel: ^4.0.0
+  path_provider: ^2.1.0
+  share_plus: ^9.0.0
+  http: ^1.2.0
+  shared_preferences: ^2.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_native_splash: ^2.4.0
+  flutter_launcher_icons: ^0.14.0
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/images/logo_3 1.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/images/logo_3 1.png"
+  min_sdk_android: 21
+
+flutter_native_splash:
+  color: "#FFFFFF"
+  image: "assets/images/logo_1 1.png"
+  android_12:
+    image: "assets/images/logo_3 1.png"
+    icon_background_color: "#FFFFFF"
+    color: "#FFFFFF"
+  fullscreen: false
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
