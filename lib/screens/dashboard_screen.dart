@@ -6,12 +6,14 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../core/theme.dart';
+import '../models/captured_lead.dart';
 import '../models/stored_call_entry.dart';
 import '../services/auth_service.dart';
 import '../services/lead_sync_service.dart';
 import '../widgets/call_log_tile.dart';
 import 'call_log_screen.dart';
 import 'delete_account_screen.dart';
+import 'leads_screen.dart';
 import 'login_screen.dart';
 import 'privacy_policy_screen.dart';
 
@@ -101,7 +103,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   int get _totalToday     => _allCalls.length;
   int get _missedToday    => _allCalls.where((e) => e.callType == 'missed').length;
-  int get _incomingToday  => _allCalls.where((e) => e.callType == 'incoming').length;
   int get _connectedToday => _allCalls.where(
       (e) => e.callType == 'incoming' && e.duration > 0).length;
 
@@ -203,11 +204,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   const SizedBox(height: 16),
                   _SectionLabel('Today\'s Overview'),
                   const SizedBox(height: 10),
-                  _StatsGrid(
-                    totalToday:     _totalToday,
-                    incomingToday:  _incomingToday,
-                    missedToday:    _missedToday,
-                    connectedToday: _connectedToday,
+                  ValueListenableBuilder<List<CapturedLead>>(
+                    valueListenable: LeadSyncService.instance.capturedLeads,
+                    builder: (_, leads, child) => _StatsGrid(
+                      totalToday:     _totalToday,
+                      capturedLeads:  leads.length,
+                      missedToday:    _missedToday,
+                      connectedToday: _connectedToday,
+                      onTapTotal:     () => Navigator.push(context,
+                          MaterialPageRoute(builder: (_) => const CallLogScreen())),
+                      onTapLeads:     () => Navigator.push(context,
+                          MaterialPageRoute(builder: (_) => const LeadsScreen())),
+                      onTapMissed:    () => Navigator.push(context,
+                          MaterialPageRoute(builder: (_) => const CallLogScreen(initialFilter: 'missed'))),
+                      onTapConnected: () => Navigator.push(context,
+                          MaterialPageRoute(builder: (_) => const CallLogScreen(initialFilter: 'connected'))),
+                    ),
                   ),
                   const SizedBox(height: 20),
                   _SectionLabel('Lead Pipeline'),
@@ -339,15 +351,23 @@ class _SectionLabel extends StatelessWidget {
 class _StatsGrid extends StatelessWidget {
   const _StatsGrid({
     required this.totalToday,
-    required this.incomingToday,
+    required this.capturedLeads,
     required this.missedToday,
     required this.connectedToday,
+    this.onTapTotal,
+    this.onTapLeads,
+    this.onTapMissed,
+    this.onTapConnected,
   });
 
   final int totalToday;
-  final int incomingToday;
+  final int capturedLeads;
   final int missedToday;
   final int connectedToday;
+  final VoidCallback? onTapTotal;
+  final VoidCallback? onTapLeads;
+  final VoidCallback? onTapMissed;
+  final VoidCallback? onTapConnected;
 
   @override
   Widget build(BuildContext context) {
@@ -365,13 +385,15 @@ class _StatsGrid extends StatelessWidget {
           label: 'Total Calls',
           value: '$totalToday',
           sub:   'today',
+          onTap: onTapTotal,
         ),
         _StatCard(
           icon:  Icons.person_add_alt_1_rounded,
           color: AppTheme.accent,
-          label: 'New Leads',
-          value: '$incomingToday',
-          sub:   'incoming today',
+          label: 'Leads Captured',
+          value: '$capturedLeads',
+          sub:   'uploaded to CRM',
+          onTap: onTapLeads,
         ),
         _StatCard(
           icon:  Icons.call_missed_rounded,
@@ -379,6 +401,7 @@ class _StatsGrid extends StatelessWidget {
           label: 'Missed',
           value: '$missedToday',
           sub:   'follow up needed',
+          onTap: onTapMissed,
         ),
         _StatCard(
           icon:  Icons.check_circle_rounded,
@@ -386,6 +409,7 @@ class _StatsGrid extends StatelessWidget {
           label: 'Connected',
           value: '$connectedToday',
           sub:   'successful calls',
+          onTap: onTapConnected,
         ),
       ],
     );
@@ -399,17 +423,21 @@ class _StatCard extends StatelessWidget {
     required this.label,
     required this.value,
     required this.sub,
+    this.onTap,
   });
 
-  final IconData icon;
-  final Color    color;
-  final String   label;
-  final String   value;
-  final String   sub;
+  final IconData      icon;
+  final Color         color;
+  final String        label;
+  final String        value;
+  final String        sub;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color:        Colors.white,
@@ -463,7 +491,8 @@ class _StatCard extends StatelessWidget {
           ],
         ),
       ),
-    );
+    ),   // Container
+    );   // GestureDetector
   }
 }
 

@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/navigator_key.dart';
+import '../models/captured_lead.dart';
 import '../widgets/lead_confirm_dialog.dart';
 import 'api_service.dart';
 import 'auth_service.dart';
@@ -15,14 +16,20 @@ class LeadSyncService {
   LeadSyncService._();
   static final LeadSyncService instance = LeadSyncService._();
 
-  static const _kEventChannel  = EventChannel('com.leadmantracrm.app/call_log_events');
-  static const _kSyncStartedAt = 'lead_sync_started_at';
-  static const _kUploadedIds   = 'lead_uploaded_ids';
+  static const _kEventChannel    = EventChannel('com.leadmantracrm.app/call_log_events');
+  static const _kSyncStartedAt   = 'lead_sync_started_at';
+  static const _kUploadedIds     = 'lead_uploaded_ids';
+  static const _kHandledNumbers  = 'lead_handled_numbers';
+  static const _kCapturedLeads   = 'lead_captured_leads';
 
   final _api = ApiService();
 
-  Set<String> _uploadedIds   = {};
+  Set<String> _uploadedIds    = {};
+  Set<String> _handledNumbers = {}; // numbers confirmed OR skipped — never prompted again
   DateTime?   _syncStartedAt;
+
+  // Full list of uploaded leads — dashboard card and leads screen both observe this.
+  final capturedLeads = ValueNotifier<List<CapturedLead>>([]);
 
   StreamSubscription<dynamic>? _sub;
   Timer?                       _debounce;
@@ -45,9 +52,19 @@ class LeadSyncService {
     }
 
     // Restore uploaded IDs so already-sent calls are never re-prompted.
-    final saved = prefs.getStringList(_kUploadedIds) ?? [];
-    _uploadedIds = saved.toSet();
+    final savedIds = prefs.getStringList(_kUploadedIds) ?? [];
+    _uploadedIds = savedIds.toSet();
     print('[SYNC] ${_uploadedIds.length} call(s) already handled');
+
+    // Restore handled numbers — confirmed OR skipped numbers are never prompted again.
+    final savedNums = prefs.getStringList(_kHandledNumbers) ?? [];
+    _handledNumbers = savedNums.toSet();
+    print('[SYNC] ${_handledNumbers.length} number(s) already handled');
+
+    // Restore captured lead details for the leads screen.
+    final savedLeads = prefs.getStringList(_kCapturedLeads) ?? [];
+    capturedLeads.value = savedLeads.map(CapturedLead.decode).toList();
+    print('[SYNC] ${capturedLeads.value.length} lead(s) captured so far');
 
     _sub ??= _kEventChannel.receiveBroadcastStream().listen(
       (_) {
@@ -62,7 +79,6 @@ class LeadSyncService {
     _debounce?.cancel();
     _sub?.cancel();
     _sub = null;
-    // Do NOT clear _syncStartedAt or _uploadedIds — persisted across restarts.
     print('[SYNC] LeadSyncService paused');
   }
 
@@ -76,40 +92,78 @@ class LeadSyncService {
     _syncing = true;
 
     try {
-      final deviceEntries = await CallLog.query(
-        dateTimeFrom: _syncStartedAt,
-      );
+      final deviceEntries = await CallLog.query(dateTimeFrom: _syncStartedAt);
 
-      // Only incoming and outgoing calls — missed calls are not leads.
-      final newEntries = deviceEntries
+      // Only incoming and outgoing — missed calls are not leads.
+      final relevant = deviceEntries
           .where((e) =>
               e.callType == CallType.incoming ||
               e.callType == CallType.outgoing)
-          .where((e) => !_uploadedIds.contains(_callId(e)))
           .toList();
 
-      print('[SYNC] ${newEntries.length} new lead call(s) pending confirmation');
+      // ── Pass 1: group calls by phone number ──────────────────────────────
+      // Rules:
+      //   • No phone number        → silently mark call ID, skip.
+      //   • Already in _uploadedIds → Android logged same call twice, skip.
+      //   • Already in _handledNumbers → user already confirmed/skipped this
+      //     number; silently mark call ID and skip — no dialog.
+      //   • Everything else        → collect into phoneToEntries so we show
+      //     exactly ONE dialog per unique new number.
 
-      bool anyHandled = false;
-      for (final entry in newEntries) {
-        if (!AuthService.instance.isLoggedIn) break;
+      final phoneToEntries = <String, List<CallLogEntry>>{};
 
+      for (final entry in relevant) {
         final id    = _callId(entry);
         final phone = entry.number;
+
         if (phone == null || phone.isEmpty) {
           _uploadedIds.add(id);
-          anyHandled = true;
+          continue;
+        }
+        if (_uploadedIds.contains(id)) continue;
+
+        if (_handledNumbers.contains(phone)) {
+          // Already handled in a previous session — mark the new call ID too.
+          _uploadedIds.add(id);
           continue;
         }
 
-        final name = (entry.name?.isNotEmpty == true) ? entry.name! : 'Unknown';
+        phoneToEntries.putIfAbsent(phone, () => []).add(entry);
+      }
 
-        // Show confirmation dialog — user must check the box and tap Send Lead.
+      // Persist any silent marks from Pass 1.
+      await _saveUploadedIds();
+
+      print('[SYNC] ${phoneToEntries.length} unique new number(s) to prompt');
+
+      // ── Pass 2: one dialog per unique new phone number ───────────────────
+      for (final pe in phoneToEntries.entries) {
+        if (!AuthService.instance.isLoggedIn) break;
+
+        final phone   = pe.key;
+        final entries = pe.value;
+        // Use the first entry (newest call) for name and timestamp.
+        final sample  = entries.first;
+        final name    = (sample.name?.isNotEmpty == true) ? sample.name! : 'Unknown';
+
+        // Show dialog. Returns null when there is no navigator context
+        // (app backgrounded mid-loop) — do NOT mark anything so the number
+        // will be prompted again next time the app is opened.
         final confirmed = await _showConfirmDialog(name, phone);
+        if (confirmed == null) {
+          print('[SYNC] No context for $phone — will retry next open');
+          continue;
+        }
 
-        // Always mark as handled after showing dialog (no re-prompting).
-        _uploadedIds.add(id);
-        anyHandled = true;
+        // Mark ALL call IDs for this number (handles the "3 calls, 1 dialog" case).
+        for (final e in entries) {
+          _uploadedIds.add(_callId(e));
+        }
+        await _saveUploadedIds();
+
+        // Block this number permanently — no future dialogs.
+        _handledNumbers.add(phone);
+        await _saveHandledNumbers();
 
         if (!confirmed) {
           print('[SYNC] Lead skipped by user: $phone');
@@ -118,15 +172,25 @@ class LeadSyncService {
 
         if (!AuthService.instance.isLoggedIn) break;
 
-        await _api.captureLead(
+        final result = await _api.captureLead(
           phone:    phone,
-          name:     entry.name,
-          duration: entry.duration ?? 0,
+          name:     sample.name,
+          duration: sample.duration ?? 0,
         );
+        if (result != null) {
+          capturedLeads.value = [
+            CapturedLead(
+              name:      name,
+              phone:     phone,
+              timestamp: sample.timestamp ?? DateTime.now().millisecondsSinceEpoch,
+            ),
+            ...capturedLeads.value,
+          ];
+          await _saveCapturedLeads();
+        }
       }
 
-      if (anyHandled) await _saveUploadedIds();
-      print('[SYNC] Done — total handled since install: ${_uploadedIds.length}');
+      print('[SYNC] Done — handled numbers: ${_handledNumbers.length}, captured: ${capturedLeads.value.length}');
     } catch (e) {
       print('[SYNC] Sync error: $e');
     } finally {
@@ -136,18 +200,20 @@ class LeadSyncService {
 
   // ── Confirmation dialog ─────────────────────────────────────────────────────
 
-  Future<bool> _showConfirmDialog(String name, String phone) async {
+  // Returns null  → no context, dialog not shown — call will retry next app open.
+  // Returns true  → user confirmed (checkbox + Send Lead).
+  // Returns false → user tapped Skip.
+  Future<bool?> _showConfirmDialog(String name, String phone) async {
     final ctx = navigatorKey.currentContext;
     if (ctx == null) {
       print('[SYNC] No context — dialog skipped for $phone (will retry next open)');
-      return false;
+      return null;
     }
-    final result = await showDialog<bool>(
+    return showDialog<bool>(
       context: ctx,
       barrierDismissible: false,
       builder: (_) => LeadConfirmDialog(name: name, phone: phone),
     );
-    return result ?? false;
   }
 
   // ── Persistence ─────────────────────────────────────────────────────────────
@@ -155,6 +221,19 @@ class LeadSyncService {
   Future<void> _saveUploadedIds() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(_kUploadedIds, _uploadedIds.toList());
+  }
+
+  Future<void> _saveHandledNumbers() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_kHandledNumbers, _handledNumbers.toList());
+  }
+
+  Future<void> _saveCapturedLeads() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      _kCapturedLeads,
+      capturedLeads.value.map(CapturedLead.encode).toList(),
+    );
   }
 
   String _callId(CallLogEntry e) =>

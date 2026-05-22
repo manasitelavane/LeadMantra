@@ -25,7 +25,10 @@ enum _ScreenState {
 }
 
 class CallLogScreen extends StatefulWidget {
-  const CallLogScreen({super.key});
+  /// Optional call-type filter pre-applied on open.
+  /// Accepted values: null (all), 'missed', 'connected'.
+  const CallLogScreen({super.key, this.initialFilter});
+  final String? initialFilter;
 
   @override
   State<CallLogScreen> createState() => _CallLogScreenState();
@@ -41,11 +44,12 @@ class _CallLogScreenState extends State<CallLogScreen>
   StreamSubscription<dynamic>? _callLogSub;
   Timer? _syncDebounce;
 
-  _ScreenState          _state       = _ScreenState.loading;
-  List<StoredCallEntry> _entries     = [];
+  _ScreenState          _state        = _ScreenState.loading;
+  List<StoredCallEntry> _entries      = [];
   String                _errorMessage = '';
-  bool                  _isSyncing   = false;
-  bool                  _isLoading   = false;
+  bool                  _isSyncing    = false;
+  bool                  _isLoading    = false;
+  late String?          _callTypeFilter = widget.initialFilter;
 
   final Set<String>            _uploadedCallIds = {};
   final Map<String, StoredCallEntry> _seenEntries = {};
@@ -66,6 +70,8 @@ class _CallLogScreenState extends State<CallLogScreen>
       final dt = DateTime.fromMillisecondsSinceEpoch(e.timestamp);
       if (dt.isBefore(_dateRange.start) || !dt.isBefore(rangeEnd)) return false;
       if (_selectedSimId != null && e.simDisplayName != _selectedSimId) return false;
+      if (_callTypeFilter == 'missed'    && e.callType != 'missed') return false;
+      if (_callTypeFilter == 'connected' && !(e.callType == 'incoming' && e.duration > 0)) return false;
       return true;
     }).toList();
   }
