@@ -162,14 +162,6 @@ class PrivacyPolicyScreen extends StatelessWidget {
                         style: TextStyle(fontSize: 16),
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    TextButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      child: Text(
-                        'Decline',
-                        style: TextStyle(color: Colors.grey[600]),
-                      ),
-                    ),
                   ],
                 ),
               ),

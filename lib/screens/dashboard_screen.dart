@@ -16,6 +16,7 @@ import 'delete_account_screen.dart';
 import 'leads_screen.dart';
 import 'login_screen.dart';
 import 'privacy_policy_screen.dart';
+import 'privacy_web_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -53,7 +54,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
           fullscreenDialog: true,
         ),
       );
-      if (agreed != true) return;
+      if (agreed != true) {
+        if (!mounted) return;
+        Navigator.pushReplacement(context,
+            MaterialPageRoute(builder: (_) => const LoginScreen()));
+        return;
+      }
       await _saveConsent();
     }
     await LeadSyncService.instance.start();
@@ -173,7 +179,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     builder: (_) => const LoginScreen()));
               } else if (v == 'privacy') {
                 Navigator.push(context, MaterialPageRoute(
-                    builder: (_) => const PrivacyPolicyScreen()));
+                    builder: (_) => const PrivacyWebScreen()));
               } else if (v == 'delete') {
                 Navigator.push(context, MaterialPageRoute(
                     builder: (_) => const DeleteAccountScreen()));

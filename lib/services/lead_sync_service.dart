@@ -69,7 +69,7 @@ class LeadSyncService {
     _sub ??= _kEventChannel.receiveBroadcastStream().listen(
       (_) {
         _debounce?.cancel();
-        _debounce = Timer(const Duration(seconds: 5), syncNow);
+        _debounce = Timer(const Duration(seconds: 2), syncNow);
       },
       onError: (_) {},
     );
