@@ -56,9 +56,9 @@ class LeadSyncService {
     _uploadedIds = savedIds.toSet();
     print('[SYNC] ${_uploadedIds.length} call(s) already handled');
 
-    // Restore handled numbers — confirmed OR skipped numbers are never prompted again.
+    // Restore handled numbers — normalize on load so +91/0 prefix variants match.
     final savedNums = prefs.getStringList(_kHandledNumbers) ?? [];
-    _handledNumbers = savedNums.toSet();
+    _handledNumbers = savedNums.map<String>(_normalizePhone).toSet();
     print('[SYNC] ${_handledNumbers.length} number(s) already handled');
 
     // Restore captured lead details for the leads screen.
@@ -113,17 +113,20 @@ class LeadSyncService {
       final phoneToEntries = <String, List<CallLogEntry>>{};
 
       for (final entry in relevant) {
-        final id    = _callId(entry);
-        final phone = entry.number;
+        final id       = _callId(entry);
+        final rawPhone = entry.number;
 
-        if (phone == null || phone.isEmpty) {
+        if (rawPhone == null || rawPhone.isEmpty) {
           _uploadedIds.add(id);
           continue;
         }
         if (_uploadedIds.contains(id)) continue;
 
+        // Normalize so +919876543210, 09876543210, 9876543210 all match.
+        final phone = _normalizePhone(rawPhone);
+
         if (_handledNumbers.contains(phone)) {
-          // Already handled in a previous session — mark the new call ID too.
+          // Already handled — mark the new call ID silently.
           _uploadedIds.add(id);
           continue;
         }
@@ -172,8 +175,10 @@ class LeadSyncService {
 
         if (!AuthService.instance.isLoggedIn) break;
 
+        // Use the raw phone from the call log entry for the API and display.
+        final displayPhone = sample.number ?? phone;
         final result = await _api.captureLead(
-          phone:    phone,
+          phone:    displayPhone,
           name:     sample.name,
           duration: sample.duration ?? 0,
         );
@@ -181,7 +186,7 @@ class LeadSyncService {
           capturedLeads.value = [
             CapturedLead(
               name:      name,
-              phone:     phone,
+              phone:     displayPhone,
               timestamp: sample.timestamp ?? DateTime.now().millisecondsSinceEpoch,
             ),
             ...capturedLeads.value,
@@ -238,4 +243,12 @@ class LeadSyncService {
 
   String _callId(CallLogEntry e) =>
       '${e.timestamp}_${e.number}_${e.callType?.name}';
+
+  /// Strip non-digits and keep last 10 digits so that
+  /// +919876543210, 919876543210, 09876543210 and 9876543210
+  /// all compare equal in _handledNumbers.
+  String _normalizePhone(String phone) {
+    final digits = phone.replaceAll(RegExp(r'\D'), '');
+    return digits.length > 10 ? digits.substring(digits.length - 10) : digits;
+  }
 }

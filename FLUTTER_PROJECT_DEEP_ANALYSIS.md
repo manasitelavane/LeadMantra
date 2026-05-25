@@ -15,23 +15,25 @@
 9. [core/navigator_key.dart](#corenavigator_keydart)
 10. [core/theme.dart](#corethemedart)
 11. [models/stored_call_entry.dart](#modelsstored_call_entrydart)
-12. [services/auth_service.dart](#servicesauth_servicedart)
-13. [services/api_service.dart](#servicesapi_servicedart)
-14. [services/lead_sync_service.dart](#serviceslead_sync_servicedart)
-15. [screens/login_screen.dart](#screenslogin_screendart)
-16. [screens/dashboard_screen.dart](#screensdashboard_screendart)
-17. [screens/call_log_screen.dart](#screenscall_log_screendart)
-18. [screens/delete_account_screen.dart](#screensdelete_account_screendart)
-19. [widgets/call_log_tile.dart](#widgetscall_log_tiledart)
-20. [widgets/lead_confirm_dialog.dart](#widgetslead_confirm_dialogdart)
-21. [MainActivity.kt](#mainactivitykt)
-22. [AndroidManifest.xml](#androidmanifestxml)
-23. [build.gradle.kts](#buildgradlekts)
-24. [State Management Analysis](#state-management-analysis)
-25. [API & Networking Analysis](#api--networking-analysis)
-26. [Architecture Review](#architecture-review)
-27. [Performance Review](#performance-review)
-28. [Code Quality Review](#code-quality-review)
+12. [models/captured_lead.dart](#modelscaptured_leaddart)
+13. [services/auth_service.dart](#servicesauth_servicedart)
+14. [services/api_service.dart](#servicesapi_servicedart)
+15. [services/lead_sync_service.dart](#serviceslead_sync_servicedart)
+16. [screens/login_screen.dart](#screenslogin_screendart)
+17. [screens/dashboard_screen.dart](#screensdashboard_screendart)
+18. [screens/call_log_screen.dart](#screenscall_log_screendart)
+19. [screens/leads_screen.dart](#screensleads_screendart)
+20. [screens/delete_account_screen.dart](#screensdelete_account_screendart)
+21. [widgets/call_log_tile.dart](#widgetscall_log_tiledart)
+22. [widgets/lead_confirm_dialog.dart](#widgetslead_confirm_dialogdart)
+23. [MainActivity.kt](#mainactivitykt)
+24. [AndroidManifest.xml](#androidmanifestxml)
+25. [build.gradle.kts](#buildgradlekts)
+26. [State Management Analysis](#state-management-analysis)
+27. [API & Networking Analysis](#api--networking-analysis)
+28. [Architecture Review](#architecture-review)
+29. [Performance Review](#performance-review)
+30. [Code Quality Review](#code-quality-review)
 
 ---
 
@@ -61,17 +63,19 @@ call_log_fetch/
 │   │   ├── navigator_key.dart       ← Global navigation key
 │   │   └── theme.dart               ← App colors + ThemeData
 │   ├── models/
-│   │   └── stored_call_entry.dart   ← Data model for a call log entry
+│   │   ├── stored_call_entry.dart   ← Data model for a call log entry
+│   │   └── captured_lead.dart       ← Data model for an uploaded lead
 │   ├── screens/
 │   │   ├── login_screen.dart        ← Login UI
-│   │   ├── dashboard_screen.dart    ← Main dashboard UI
-│   │   ├── call_log_screen.dart     ← Full call log viewer
+│   │   ├── dashboard_screen.dart    ← Main dashboard UI (tappable stat cards)
+│   │   ├── call_log_screen.dart     ← Full call log viewer (with initialFilter)
+│   │   ├── leads_screen.dart        ← All uploaded leads list
 │   │   ├── delete_account_screen.dart ← Account deletion UI
 │   │   └── privacy_policy_screen.dart ← Privacy policy + consent
 │   ├── services/
 │   │   ├── auth_service.dart        ← Login / logout / token management
 │   │   ├── api_service.dart         ← HTTP calls to backend
-│   │   └── lead_sync_service.dart   ← Call monitoring + lead capture logic
+│   │   └── lead_sync_service.dart   ← Call monitoring + two-pass lead capture logic
 │   ├── utils/
 │   │   └── call_log_utils.dart      ← Duration, timestamp, label formatters
 │   └── widgets/
@@ -102,30 +106,31 @@ This separation is called **Separation of Concerns**. A senior developer follows
 This project follows a **lightweight layered architecture**:
 
 ```
-┌────────────────────────────────────────┐
-│              SCREENS (UI Layer)         │
-│  login  dashboard  calllog  delete      │
-└──────────────┬─────────────────────────┘
-               │ calls
-┌──────────────▼─────────────────────────┐
-│            SERVICES (Logic Layer)       │
-│  AuthService  ApiService  LeadSync      │
-└──────────────┬─────────────────────────┘
-               │ uses
-┌──────────────▼─────────────────────────┐
-│             CORE (Config Layer)         │
-│  endpoints  theme  navigatorKey  config │
-└────────────────────────────────────────┘
-               │ uses
-┌──────────────▼─────────────────────────┐
-│            MODELS (Data Layer)          │
-│          StoredCallEntry                │
-└────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────┐
+│                   SCREENS (UI Layer)                    │
+│  login  dashboard  calllog  leads  delete  privacy     │
+└──────────────────────┬─────────────────────────────────┘
+                       │ calls
+┌──────────────────────▼─────────────────────────────────┐
+│                 SERVICES (Logic Layer)                  │
+│  AuthService  ApiService  LeadSyncService               │
+│  (capturedLeads: ValueNotifier<List<CapturedLead>>)     │
+└──────────────────────┬─────────────────────────────────┘
+                       │ uses
+┌──────────────────────▼─────────────────────────────────┐
+│                  CORE (Config Layer)                    │
+│  endpoints  theme  navigatorKey  config                 │
+└────────────────────────────────────────────────────────┘
+                       │ uses
+┌──────────────────────▼─────────────────────────────────┐
+│                 MODELS (Data Layer)                     │
+│  StoredCallEntry   CapturedLead                         │
+└────────────────────────────────────────────────────────┘
 ```
 
-It is NOT full Clean Architecture (no repository pattern, no use-case layer, no domain layer). For an app of this size — one API, one model, three screens — that would be over-engineering. The pattern chosen here is appropriate: simple, readable, and maintainable.
+It is NOT full Clean Architecture (no repository pattern, no use-case layer, no domain layer). For an app of this size — one API, a handful of models, five screens — that would be over-engineering. The pattern chosen here is appropriate: simple, readable, and maintainable.
 
-State management is **setState only** — no BLoC, no Provider, no Riverpod. This is correct for this app size. Adding BLoC here would be premature complexity.
+State management is **setState + ValueNotifier**. Screen-local state (loading flags, call lists) uses `setState`. Cross-screen reactive state — specifically the list of uploaded leads — uses `ValueNotifier<List<CapturedLead>>` in `LeadSyncService`, observed with `ValueListenableBuilder` in both `DashboardScreen` and `LeadsScreen`. No BLoC, no Provider, no Riverpod. The minimal tool for each job.
 
 ---
 
@@ -145,21 +150,49 @@ LoginScreen
   → token saved to SharedPreferences
   → Navigator → DashboardScreen
 
-DashboardScreen
+DashboardScreen (initState)
   → LeadSyncService.start()
-      loads _syncStartedAt from prefs (first ever start time)
-      loads _uploadedIds from prefs
-      registers EventChannel listener
-  → _loadStats(): CallLog.query(today) → display stats
-  → LeadSyncService.syncNow(): find calls since _syncStartedAt, show dialog, upload
+      loads _syncStartedAt from prefs (first-ever start time — never overwritten)
+      loads _uploadedIds from prefs (call IDs already handled)
+      loads _handledNumbers from prefs (phone numbers confirmed OR skipped — never prompted again)
+      loads capturedLeads from prefs (full list for LeadsScreen)
+      registers EventChannel listener (Android ContentObserver bridge)
+  → _loadStats(): CallLog.query(today) → display today's stats
+  → LeadSyncService.syncNow(): runs two-pass lead scan
+  → ValueListenableBuilder watches capturedLeads → "Leads Captured" card updates reactively
 
 Call happens on phone
-  → Android ContentObserver fires
-  → EventChannel sends "changed" to Flutter
-  → 5-second debounce timer
-  → LeadSyncService.syncNow()
-  → LeadConfirmDialog shown
-  → user confirms → ApiService.captureLead() → POST /call-lead/capture
+  → Android ContentObserver fires → EventChannel sends "changed" to Flutter
+  → 5-second debounce timer → LeadSyncService.syncNow()
+
+User returns to app after call
+  → DashboardScreen.didChangeAppLifecycleState(resumed) fires
+  → LeadSyncService.syncNow() called immediately
+
+LeadSyncService.syncNow() — Two-Pass Algorithm
+  → Pass 1: group calls by normalized phone number
+      • no number         → mark ID, skip silently
+      • ID in _uploadedIds  → skip (same call seen before)
+      • phone in _handledNumbers → mark ID silently (number already handled)
+      • new number        → add to phoneToEntries map
+  → persist any silent marks to SharedPreferences
+  → Pass 2: ONE dialog per unique new phone number
+      for each (phone → entries) in phoneToEntries:
+        → _showConfirmDialog(name, phone)
+            returns null if no context (app backgrounded) → skip, retry next open
+            returns true  → user tapped "Send Lead"
+            returns false → user tapped "Skip"
+        → mark ALL call IDs for that number in _uploadedIds
+        → add phone to _handledNumbers (permanent — no future dialogs)
+        → if confirmed: ApiService.captureLead() → POST /call-lead/capture
+            → on success: prepend CapturedLead to capturedLeads list
+            → capturedLeads ValueNotifier notifies Dashboard + LeadsScreen
+
+Dashboard stat card taps
+  → Total Calls  → CallLogScreen()
+  → Missed       → CallLogScreen(initialFilter: 'missed')
+  → Connected    → CallLogScreen(initialFilter: 'connected')
+  → Leads Captured → LeadsScreen()
 ```
 
 ---
@@ -436,6 +469,42 @@ Used to serialize the entry for storage or API transmission. Returns a plain `Ma
 
 ---
 
+# models/captured_lead.dart
+
+## Purpose
+Data model for a lead that has been confirmed by the user and successfully uploaded to the CRM backend. Instances are stored in `LeadSyncService.capturedLeads` (a `ValueNotifier`) and persisted to SharedPreferences so the `LeadsScreen` survives app restarts.
+
+## Why a Separate Model from `StoredCallEntry`?
+`StoredCallEntry` represents the raw call log record — it has SIM info, account IDs, and fields only relevant to displaying a call list. `CapturedLead` is a much lighter object: only the three things a user cares about seeing in the lead list — name, phone, and when it was sent. Keeping them separate means the lead list storage is compact and not coupled to the call log package's data shape.
+
+## Fields
+
+| Field | Type | Purpose |
+|---|---|---|
+| `name` | `String` | Display name (contact name or 'Unknown') |
+| `phone` | `String` | Raw phone number as shown to user |
+| `timestamp` | `int` | Milliseconds since epoch — when the lead was sent |
+
+## Serialization Design
+
+```dart
+static String encode(CapturedLead l) => jsonEncode(l.toJson());
+static CapturedLead decode(String s)  =>
+    CapturedLead.fromJson(jsonDecode(s) as Map<String, dynamic>);
+```
+
+`encode`/`decode` are static methods rather than instance methods or top-level functions. Static methods on the class keep serialization logic close to the data. SharedPreferences stores a `List<String>` — each string is one JSON-encoded `CapturedLead`. The `_kCapturedLeads` key in `LeadSyncService` maps to this list.
+
+## `fromJson` Null Safety
+
+```dart
+name: j['name'] as String? ?? 'Unknown',
+```
+
+The `as String?` cast + `?? 'Unknown'` handles two failure cases: (1) `j['name']` is absent from JSON, (2) it is present but null. Both fall back to `'Unknown'` so the UI never shows a null string.
+
+---
+
 # services/auth_service.dart
 
 ## Purpose
@@ -579,26 +648,36 @@ Shows the debug snackbar for every response. The endpoint name is a friendly lab
 # services/lead_sync_service.dart
 
 ## Purpose
-The core business logic of the app. Monitors the Android call log for changes, shows confirmation dialogs to the user, and sends qualifying calls to the backend as leads.
+The core business logic of the app. Monitors the Android call log for changes, implements a two-pass deduplication algorithm, shows exactly one confirmation dialog per unique new phone number, and uploads confirmed leads to the backend.
 
 ## Why a Singleton?
 ```dart
 LeadSyncService._();
 static final LeadSyncService instance = LeadSyncService._();
 ```
-The singleton must persist across screen navigations. When the user navigates from Dashboard to CallLogScreen and back, the EventChannel listener and the `_syncStartedAt` timestamp must not be reset. A new instance each time would lose all state.
+The singleton must persist across screen navigations. When the user navigates from Dashboard to CallLogScreen and back, the EventChannel listener, `_syncStartedAt`, `_uploadedIds`, `_handledNumbers`, and `capturedLeads` must not be reset. A new instance each time would lose all state.
 
 ## Key State Fields
 
 ```dart
 Set<String> _uploadedIds = {};
 ```
-In-memory set of call IDs that have been "handled" (either uploaded or skipped by user). Persisted to SharedPreferences so it survives app restarts.
+In-memory set of **call IDs** that have been "handled" — their call record was seen and dealt with (dialog shown, number silently skipped, or number had no phone). Persisted to SharedPreferences. Key format: `"timestamp_number_calltype"`.
+
+```dart
+Set<String> _handledNumbers = {};
+```
+In-memory set of **normalized phone numbers** that have been permanently blocked from showing dialogs — either the user confirmed the lead OR the user tapped Skip. Once a number is in this set, no future calls from that number will ever trigger a dialog. Persisted to SharedPreferences. Numbers are stored as the last 10 digits (normalized) so `+919876543210`, `09876543210`, and `9876543210` all compare equal.
 
 ```dart
 DateTime? _syncStartedAt;
 ```
-The timestamp of the very first time `start()` was ever called (first install). Persisted to SharedPreferences. Calls before this moment are never captured — they are the user's historical call history and not new leads.
+The timestamp of the very first time `start()` was ever called (first install). Persisted to SharedPreferences and **never overwritten**. Calls before this moment are never captured — they are the user's historical call history, not new leads.
+
+```dart
+final capturedLeads = ValueNotifier<List<CapturedLead>>([]);
+```
+A reactive list of successfully uploaded leads. Both `DashboardScreen` (for the "Leads Captured" count) and `LeadsScreen` (for the full list) observe this with `ValueListenableBuilder`. When a new lead is uploaded, it is prepended to this list and persisted to SharedPreferences.
 
 ## `start()` — Step by step
 
@@ -611,18 +690,24 @@ if (savedMs == null) {
   _syncStartedAt = DateTime.fromMillisecondsSinceEpoch(savedMs);
 }
 ```
-First-ever call: records `DateTime.now()` as the cutoff point. All subsequent calls: loads the saved timestamp. `??=` is NOT used here because we need to both check and persist — the explicit `if` makes this clearer.
+First-ever app start: records `DateTime.now()` and persists it. All future starts: loads the saved value. This is intentionally NOT `??=` — we need both the check and the persist in one block.
 
 ```dart
-final saved = prefs.getStringList(_kUploadedIds) ?? [];
-_uploadedIds = saved.toSet();
+final savedNums = prefs.getStringList(_kHandledNumbers) ?? [];
+_handledNumbers = savedNums.map<String>(_normalizePhone).toSet();
 ```
-Restores the set of handled calls. Converting list to Set gives O(1) lookup performance — `_uploadedIds.contains(id)` is instant regardless of how many entries there are.
+Restores handled numbers with normalization applied on load. This guarantees that if a number was stored as `+919876543210` and is later looked up as `9876543210`, the normalized form matches. The `.map<String>()` explicit generic is required because Dart cannot infer the return type of `_normalizePhone` when chaining into `.toSet()`.
+
+```dart
+final savedLeads = prefs.getStringList(_kCapturedLeads) ?? [];
+capturedLeads.value = savedLeads.map(CapturedLead.decode).toList();
+```
+Restores the full lead list so `LeadsScreen` can show all previously captured leads immediately on app open, without waiting for a sync.
 
 ```dart
 _sub ??= _kEventChannel.receiveBroadcastStream().listen(...)
 ```
-`??=` assigns only if `_sub` is currently null. This prevents double-registration if `start()` is called multiple times (e.g., user navigates to settings and back). A second listener registration would mean every call triggers the sync twice.
+`??=` assigns only if `_sub` is currently null — prevents double-registration if `start()` is called twice.
 
 ## EventChannel + Debounce Pattern
 
@@ -632,10 +717,10 @@ _sub ??= _kEventChannel.receiveBroadcastStream().listen(
     _debounce?.cancel();
     _debounce = Timer(const Duration(seconds: 5), syncNow);
   },
+  onError: (_) {},
+);
 ```
-When Android's ContentObserver detects a change in the call log, it fires immediately. But a single phone call can cause multiple ContentObserver events (ringing starts, ringing stops, call answered, call ended — each updates the call log). Without debouncing, `syncNow()` would be called multiple times for one call, and the dialog would appear multiple times.
-
-The debounce pattern: cancel any pending timer, start a fresh 5-second timer. Only after 5 seconds of silence does `syncNow()` actually run. By that time, the call is fully recorded in the call log.
+A single call triggers multiple ContentObserver events (ringing starts, answered, ended — each updates the call log). The debounce pattern: cancel any pending timer, start a fresh 5-second timer. Only after 5 seconds of silence does `syncNow()` run. By that time the call is fully recorded in the call log with its final duration.
 
 ## `stop()` — What it does and does NOT do
 
@@ -644,89 +729,155 @@ void stop() {
   _debounce?.cancel();
   _sub?.cancel();
   _sub = null;
-  // DO NOT clear _syncStartedAt or _uploadedIds
 }
 ```
-`stop()` pauses listening. It does NOT clear the persisted state. This is intentional: when the app reopens and `start()` is called again, the saved `_syncStartedAt` ensures we pick up exactly where we left off — no calls are missed, and no calls are duplicated.
+Pauses the EventChannel listener. Does NOT clear `_uploadedIds`, `_handledNumbers`, or `capturedLeads`. All in-memory state remains valid — when `start()` is called again (e.g., user re-opens app), it restores from SharedPreferences and the service resumes exactly where it left off.
 
-## `syncNow()` — Full walkthrough
+## `syncNow()` — Two-Pass Algorithm
 
-**Guard clauses:**
+### Guard clauses
 ```dart
-if (_syncing) return;           // Prevent concurrent runs
-if (!AuthService.instance.isLoggedIn) return;  // No token = don't try
-if (!Platform.isAndroid) return;   // Call log is Android-only
-if (_syncStartedAt == null) return; // start() was not called yet
+if (_syncing) return;
+if (!AuthService.instance.isLoggedIn) return;
+if (!Platform.isAndroid) return;
+if (_syncStartedAt == null) return;
+_syncing = true;
 ```
-These four checks prevent any bad state. `_syncing` is the most important — without it, two overlapping sync runs would submit the same call twice (before the `_uploadedIds` is updated).
+`_syncing` is the most important guard — prevents concurrent runs where two overlapping syncs would both show dialogs for the same call.
 
-**Querying the call log:**
+### Query
 ```dart
-final deviceEntries = await CallLog.query(
-  dateTimeFrom: _syncStartedAt,
-);
-```
-`CallLog.query` is more efficient than `CallLog.get` because it asks Android to filter at the database level. Only calls from `_syncStartedAt` onwards are returned. The result size is small (calls made since first install), not the entire lifetime of the phone.
-
-**Filtering:**
-```dart
-final newEntries = deviceEntries
-    .where((e) =>
-        e.callType == CallType.incoming ||
-        e.callType == CallType.outgoing)
-    .where((e) => !_uploadedIds.contains(_callId(e)))
+final deviceEntries = await CallLog.query(dateTimeFrom: _syncStartedAt);
+final relevant = deviceEntries
+    .where((e) => e.callType == CallType.incoming || e.callType == CallType.outgoing)
     .toList();
 ```
-Two filters chained: (1) only incoming and outgoing call types — missed calls are excluded because a missed call means the person hung up before anyone answered, which is a weaker lead signal; (2) not already in `_uploadedIds` — prevents re-prompting for calls already handled.
+Only incoming and outgoing calls. Missed calls (person hung up before answering) are not leads.
 
-**The loop:**
+### Pass 1 — Group by normalized phone
 ```dart
-for (final entry in newEntries) {
-  if (!AuthService.instance.isLoggedIn) break;
-```
-Check at the START of each iteration. If a previous API call triggered `handleExpiredSession`, `isLoggedIn` is now false. Breaking here prevents sending more API calls with a null/invalid token.
+final phoneToEntries = <String, List<CallLogEntry>>{};
 
-```dart
-final confirmed = await _showConfirmDialog(name, phone);
-_uploadedIds.add(id);  // Always mark handled AFTER dialog
-anyHandled = true;
-```
-The dialog runs and awaits the user's decision. Regardless of whether confirmed or skipped, the ID is added to `_uploadedIds` immediately after. This is critical: if the same call fires `syncNow()` again (e.g., another EventChannel event before `_saveUploadedIds` completes), it won't be prompted twice.
+for (final entry in relevant) {
+  final id       = _callId(entry);
+  final rawPhone = entry.number;
 
-```dart
-if (!confirmed) { continue; }
-if (!AuthService.instance.isLoggedIn) break;
-await _api.captureLead(...);
-```
-Second `isLoggedIn` check before the API call handles the race condition where the session expired while the dialog was open (user was deciding for 5 minutes).
-
-## `_showConfirmDialog()`
-
-```dart
-Future<bool> _showConfirmDialog(String name, String phone) async {
-  final ctx = navigatorKey.currentContext;
-  if (ctx == null) {
-    print('[SYNC] No context — dialog skipped...');
-    return false;
+  if (rawPhone == null || rawPhone.isEmpty) {
+    _uploadedIds.add(id);   // no number → silently mark, skip
+    continue;
   }
-  final result = await showDialog<bool>(
-    context: ctx,
-    barrierDismissible: false,
-    ...
+  if (_uploadedIds.contains(id)) continue;  // already handled
+
+  final phone = _normalizePhone(rawPhone);
+
+  if (_handledNumbers.contains(phone)) {
+    _uploadedIds.add(id);   // number already handled → mark new call ID, skip
+    continue;
+  }
+
+  phoneToEntries.putIfAbsent(phone, () => []).add(entry);
+}
+await _saveUploadedIds();
+```
+
+**Why group by phone?** A user might receive 3 calls from the same number before opening the app. Without grouping, the old single-pass loop would show 3 dialogs. With grouping, all 3 calls map to the same key — one dialog is shown.
+
+**Why check `_handledNumbers`?** The user may have previously confirmed or skipped this number. A new call from the same number — whether incoming or outgoing — should be silently marked and never re-prompted. The `_normalizePhone` normalization ensures `+919876543210` and `9876543210` are treated as the same number.
+
+### Pass 2 — One dialog per unique new number
+```dart
+for (final pe in phoneToEntries.entries) {
+  if (!AuthService.instance.isLoggedIn) break;
+
+  final phone   = pe.key;
+  final entries = pe.value;
+  final sample  = entries.first;
+  final name    = (sample.name?.isNotEmpty == true) ? sample.name! : 'Unknown';
+
+  final confirmed = await _showConfirmDialog(name, phone);
+  if (confirmed == null) {
+    // No context — app was backgrounded. Do NOT mark anything.
+    // This number will be prompted again next time the app opens.
+    continue;
+  }
+
+  // Mark ALL call IDs for this number — handles "3 calls, 1 dialog" case.
+  for (final e in entries) { _uploadedIds.add(_callId(e)); }
+  await _saveUploadedIds();
+
+  // Permanently block this number — no future dialogs ever.
+  _handledNumbers.add(phone);
+  await _saveHandledNumbers();
+
+  if (!confirmed) continue;   // user tapped Skip
+
+  if (!AuthService.instance.isLoggedIn) break;
+
+  final displayPhone = sample.number ?? phone;
+  final result = await _api.captureLead(
+    phone:    displayPhone,
+    name:     sample.name,
+    duration: sample.duration ?? 0,
   );
-  return result ?? false;
+  if (result != null) {
+    capturedLeads.value = [
+      CapturedLead(name: name, phone: displayPhone, timestamp: ...),
+      ...capturedLeads.value,  // prepend — newest first
+    ];
+    await _saveCapturedLeads();
+  }
 }
 ```
-`barrierDismissible: false` prevents the user from dismissing the dialog by tapping outside. This forces an explicit decision (Skip or Send). If the context is null (app backgrounded), the method returns false without showing anything — the call is NOT marked as handled (the `_uploadedIds.add(id)` happens in the caller after this returns), so it WILL be prompted next time the app is open.
 
-Wait — actually, looking at the code: `_uploadedIds.add(id)` happens AFTER `_showConfirmDialog` returns. If context is null and `_showConfirmDialog` returns false, then back in the loop `_uploadedIds.add(id)` still runs. This means context-null cases ARE marked as handled. The call will NOT be re-prompted. This is a design choice: if the app was backgrounded before the dialog could show, the call is silently skipped.
+Key design decisions in Pass 2:
+- **`confirmed == null` → retry**: If there is no navigator context (app was backgrounded mid-loop), `_showConfirmDialog` returns null. Nothing is marked — the number will be prompted again next time the app opens. This is the correct behavior.
+- **Mark ALL call IDs for the number**: If 3 calls from the same number were grouped, all 3 IDs are added to `_uploadedIds` after one dialog. Future syncs will not re-queue any of those calls.
+- **`_handledNumbers` is permanent**: Whether the user confirmed or skipped, the number is added. This is intentional — the user made a conscious decision about that number; don't ask again.
+
+## `_showConfirmDialog()` — Returns `bool?`
+
+```dart
+Future<bool?> _showConfirmDialog(String name, String phone) async {
+  final ctx = navigatorKey.currentContext;
+  if (ctx == null) return null;  // no context → caller will retry
+  return showDialog<bool>(
+    context: ctx,
+    barrierDismissible: false,
+    builder: (_) => LeadConfirmDialog(name: name, phone: phone),
+  );
+}
+```
+
+Returns three distinct values:
+- `null` — no context, dialog not shown. Caller does NOT mark the number → retried next open.
+- `true` — user tapped "Send Lead". Caller uploads and marks.
+- `false` — user tapped "Skip". Caller marks without uploading.
+
+`barrierDismissible: false` forces an explicit decision. The user cannot tap outside to dismiss — that would be indistinguishable from Skip.
+
+## `_normalizePhone()`
+
+```dart
+String _normalizePhone(String phone) {
+  final digits = phone.replaceAll(RegExp(r'\D'), '');
+  return digits.length > 10 ? digits.substring(digits.length - 10) : digits;
+}
+```
+
+Strips all non-digits, then keeps only the last 10 digits. Result:
+- `+919876543210` → `9876543210`
+- `09876543210`   → `9876543210`
+- `919876543210`  → `9876543210`
+- `9876543210`    → `9876543210`
+
+All four forms compare equal. This means an incoming call stored as `+91...` and a subsequent outgoing call stored as bare `9876543210` are recognized as the same number — one is in `_handledNumbers`, the other matches on lookup.
 
 ## `_callId()`
 ```dart
 String _callId(CallLogEntry e) =>
     '${e.timestamp}_${e.number}_${e.callType?.name}';
 ```
-Creates a deterministic unique string for any call. Same call always produces same ID. Used as the key in `_uploadedIds`.
+Deterministic unique key for any call record. The same call always produces the same ID. Used as the key in `_uploadedIds`.
 
 ---
 
@@ -800,10 +951,10 @@ A private stateless widget that renders a field label (`Email`, `Password`) with
 # screens/dashboard_screen.dart
 
 ## Purpose
-The main screen after login. Shows today's call statistics, lead pipeline, recent activity, and a navigation menu.
+The main screen after login. Shows today's call statistics, lead pipeline count, recent activity, and a navigation menu. All four stat cards are tappable and navigate to filtered views.
 
-## Type: StatefulWidget
-Must be stateful because it manages: `_loading` (spinner vs content), `_allCalls` (the list that drives all stats). These change when `_loadStats()` completes.
+## Type: StatefulWidget + WidgetsBindingObserver
+Must be stateful because it manages: `_loading` (spinner vs content), `_allCalls` (drives all today's stats). Also mixes in `WidgetsBindingObserver` to detect when the app returns from background (after a call ends) and trigger an immediate sync.
 
 ## `initState` Pattern
 
@@ -811,21 +962,35 @@ Must be stateful because it manages: `_loading` (spinner vs content), `_allCalls
 @override
 void initState() {
   super.initState();
+  WidgetsBinding.instance.addObserver(this);
   WidgetsBinding.instance.addPostFrameCallback((_) => _init());
 }
 ```
-`addPostFrameCallback` defers `_init()` to after the first frame renders. This is needed because `_init()` may call `Navigator.push` (for consent screen). Calling `Navigator.push` during `initState` — before the widget is laid out — throws an error. The post-frame callback guarantees the widget is fully built and mounted.
+`addObserver(this)` registers the screen for lifecycle callbacks (`didChangeAppLifecycleState`). `addPostFrameCallback` defers `_init()` to after the first frame — needed because `_init()` may call `Navigator.push` (for consent screen), which is not allowed during `initState`.
 
 ## `dispose()`
 
 ```dart
 @override
 void dispose() {
+  WidgetsBinding.instance.removeObserver(this);
   LeadSyncService.instance.stop();
   super.dispose();
 }
 ```
-When the user navigates away from the dashboard (to Login via logout, or back from a route that removes Dashboard), `stop()` pauses the EventChannel listener. This prevents memory leaks and prevents the sync from trying to show dialogs when no screen is visible.
+`removeObserver` prevents lifecycle callbacks from firing after the widget is gone. `stop()` pauses the EventChannel listener. Both are required to prevent memory leaks.
+
+## `didChangeAppLifecycleState()`
+
+```dart
+@override
+void didChangeAppLifecycleState(AppLifecycleState state) {
+  if (state == AppLifecycleState.resumed) {
+    LeadSyncService.instance.syncNow();
+  }
+}
+```
+When the user ends a call and returns to the app, Android transitions the app from `paused` → `resumed`. This fires immediately. `syncNow()` runs without waiting for the next ContentObserver event — so the dialog appears as soon as the user opens the app, not only after the next EventChannel tick.
 
 ## `_init()` — Flow
 
@@ -833,10 +998,7 @@ When the user navigates away from the dashboard (to Login via logout, or back fr
 Future<void> _init() async {
   final consented = await _hasConsented();
   if (!consented) {
-    final agreed = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(builder: (_) => const PrivacyPolicyScreen(isConsent: true)),
-    );
+    final agreed = await Navigator.push<bool>(...PrivacyPolicyScreen...);
     if (agreed != true) return;
     await _saveConsent();
   }
@@ -845,20 +1007,15 @@ Future<void> _init() async {
   LeadSyncService.instance.syncNow();
 }
 ```
-Order matters: (1) consent must be obtained before any data collection; (2) `LeadSyncService.start()` must run before `_loadStats()` because `start()` loads persisted state needed for sync; (3) `syncNow()` runs after `_loadStats()` so the dashboard is already rendered when confirmation dialogs appear — not blank screen with a dialog on top.
-
-## `_hasConsented()` / `_saveConsent()`
-
-Uses `path_provider` to get the application documents directory and checks for the existence of a `.consent` file. A file-based approach rather than SharedPreferences — both work equally well, but a file is slightly more visible to developers inspecting device storage.
+Order matters: (1) consent before data collection; (2) `start()` before `_loadStats()` — start loads persisted state; (3) `syncNow()` after the dashboard is rendered — dialogs appear on top of a visible screen, not a blank one.
 
 ## `_loadStats()` — Step by step
 
 ```dart
-final now = DateTime.now();
 final todayStart = DateTime(now.year, now.month, now.day);
 final raw = await CallLog.query(dateTimeFrom: todayStart);
 ```
-Queries only today's calls (from midnight today). This is for DISPLAY only — showing today's statistics. It does not trigger any lead capture. `todayStart` is midnight of today: `DateTime(year, month, day)` with no time components defaults to 00:00:00.
+Queries only today's calls from midnight. For display only — no lead capture triggered here. `DateTime(year, month, day)` with no time component defaults to 00:00:00.
 
 ```dart
 final entries = raw
@@ -866,27 +1023,49 @@ final entries = raw
     .toList()
     ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
 ```
-The `..sort` is the cascade operator — sort in-place on the same list that was just created. Sorted newest-first (`b.compareTo(a)`, not `a.compareTo(b)`).
+The `..sort` cascade operator sorts in-place, newest-first.
 
 ## Computed Stats Getters
 
 ```dart
 int get _totalToday     => _allCalls.length;
 int get _missedToday    => _allCalls.where((e) => e.callType == 'missed').length;
-int get _incomingToday  => _allCalls.where((e) => e.callType == 'incoming').length;
 int get _connectedToday => _allCalls.where(
     (e) => e.callType == 'incoming' && e.duration > 0).length;
 ```
-These are **computed getters**, not stored fields. Every time they are accessed (during build), they scan `_allCalls` with a `.where()`. Since `_allCalls` is today's calls only (typically < 100 entries), the linear scan is negligible. The benefit: they are always accurate — no synchronization needed between a stored count and the actual list.
+Computed on demand from `_allCalls` — one source of truth. The "Leads Captured" count is no longer a computed getter on `_allCalls`; it comes from `LeadSyncService.instance.capturedLeads.value.length` and updates reactively via `ValueListenableBuilder`.
+
+## Tappable Stat Cards — Navigation
 
 ```dart
-int get _pipelineNew       => _missedToday;
-int get _pipelineContacted => _allCalls.where(
-    (e) => e.callType == 'incoming' || e.callType == 'outgoing').length;
-int get _pipelineConverted => _allCalls.where(
-    (e) => e.callType == 'incoming' && e.duration > 60).length;
+_StatsGrid(
+  totalCalls:  _totalToday,
+  missed:      _missedToday,
+  connected:   _connectedToday,
+  leadsCount:  leads.length,   // from ValueListenableBuilder
+  onTapTotal:     () => Navigator.push(...CallLogScreen()),
+  onTapMissed:    () => Navigator.push(...CallLogScreen(initialFilter: 'missed')),
+  onTapConnected: () => Navigator.push(...CallLogScreen(initialFilter: 'connected')),
+  onTapLeads:     () => Navigator.push(...LeadsScreen()),
+)
 ```
-Pipeline logic: "New" leads are missed calls (someone called, you didn't answer — potential new lead). "Contacted" is all incoming + outgoing (two-way communication). "Converted" is incoming calls longer than 60 seconds (enough time to have a real conversation).
+Each stat card has an `onTap` callback. `_StatsGrid` passes them down to `_StatCard`, which wraps its `Container` in a `GestureDetector`. This means the entire card area — including padding — responds to taps.
+
+## `ValueListenableBuilder` for Leads Count
+
+```dart
+ValueListenableBuilder<List<CapturedLead>>(
+  valueListenable: LeadSyncService.instance.capturedLeads,
+  builder: (_, leads, child) {
+    return _StatsGrid(
+      ...
+      leadsCount: leads.length,
+      ...
+    );
+  },
+)
+```
+The outer `StatefulWidget` manages today's call stats (which require `setState` after an async `CallLog.query`). The leads count is wrapped separately in a `ValueListenableBuilder` — it rebuilds only this subtree whenever a new lead is captured, without requiring `setState` on the whole screen.
 
 ## `_StatsGrid` — Layout Decision
 
@@ -898,17 +1077,21 @@ GridView.count(
   childAspectRatio: 1.4,
   shrinkWrap:       true,
   physics:          const NeverScrollableScrollPhysics(),
-```
-`GridView.count` is used instead of `Row + Column` because it guarantees all 4 cards have identical dimensions. A `Row` with `Expanded` children gives equal widths but heights depend on content — one card with longer text would be taller. `childAspectRatio: 1.4` means width:height = 1.4:1 (slightly wider than tall). `shrinkWrap: true` + `NeverScrollableScrollPhysics` makes the grid non-scrolling — it sits inside an outer `ListView`. `shrinkWrap` without `NeverScrollableScrollPhysics` causes jank because two scrollable widgets fight each other.
-
-## `_StatCard` with `ClipRect`
-
-```dart
-child: ClipRect(
-  child: Column(...)
 )
 ```
-`ClipRect` clips any overflow that would escape the card boundaries. Even if the text is very long or the font is large, it cannot overflow visually. This is a defensive UI pattern.
+`GridView.count` guarantees all 4 cards have identical dimensions. `shrinkWrap: true` + `NeverScrollableScrollPhysics` makes the grid non-scrolling inside an outer `ListView` — two scrollable widgets would fight each other without `NeverScrollableScrollPhysics`.
+
+## `_StatCard` with `GestureDetector`
+
+```dart
+GestureDetector(
+  onTap: onTap,
+  child: ClipRect(
+    child: Container(...)
+  ),
+)
+```
+`GestureDetector` wraps the entire card including its `ClipRect`. `ClipRect` clips text overflow defensively. `onTap` is nullable (`VoidCallback?`) — when null, tapping the card does nothing (currently all four cards have taps wired).
 
 ## Menu Population
 
@@ -919,14 +1102,37 @@ if (AuthService.instance.isLoggedIn) ...[
   _menuItem('login',  Icons.login_rounded,  'Login',  null),
 ],
 ```
-The spread operator `...[]` inside a list literal allows conditional menu items. When the session expires silently (no redirect), `isLoggedIn` becomes false and the menu automatically shows "Login" instead of "Logout" — no rebuild needed because `PopupMenuButton` builds fresh each time it opens.
+The spread operator `...[]` allows conditional menu items. When the session expires silently, `isLoggedIn` becomes false and "Login" replaces "Logout" automatically — `PopupMenuButton` rebuilds fresh each time it opens.
 
 ---
 
 # screens/call_log_screen.dart
 
 ## Purpose
-A full call log viewer with date filtering, SIM filtering, and its own background sync.
+A full call log viewer with date filtering, SIM filtering, call-type pre-filtering, and its own background sync.
+
+## `initialFilter` Parameter
+
+```dart
+class CallLogScreen extends StatefulWidget {
+  const CallLogScreen({super.key, this.initialFilter});
+  final String? initialFilter; // null = all, 'missed', 'connected'
+}
+```
+
+When navigated to from a dashboard stat card, `initialFilter` pre-applies a call-type filter. The state field initializes from this:
+
+```dart
+late String? _callTypeFilter = widget.initialFilter;
+```
+
+The `_filteredEntries` getter uses it:
+```dart
+if (_callTypeFilter == 'missed'    && e.callType != 'missed') return false;
+if (_callTypeFilter == 'connected' && !(e.callType == 'incoming' && e.duration > 0)) return false;
+```
+
+This means tapping "Missed" on the dashboard opens the call log already showing only missed calls — the user does not need to set the filter manually.
 
 ## `_ScreenState` Enum
 
@@ -1005,6 +1211,61 @@ body: AnimatedSwitcher(
 ),
 ```
 When `_state` changes (e.g., loading → loaded), `AnimatedSwitcher` cross-fades between the old and new body. `KeyedSubtree` with `ValueKey(_state)` tells Flutter that each state is a different child — without the key, Flutter might try to morph the old widget into the new one instead of fading. This adds polish to state transitions.
+
+---
+
+# screens/leads_screen.dart
+
+## Purpose
+Displays the full list of leads that have been confirmed by the user and successfully uploaded to the CRM backend. Navigated to by tapping the "Leads Captured" stat card on the dashboard.
+
+## Type: StatelessWidget
+`LeadsScreen` has no local state of its own. It reads `LeadSyncService.instance.capturedLeads` — a `ValueNotifier` — and renders whatever is in it. A `StatelessWidget` is sufficient because `ValueListenableBuilder` handles all reactivity internally.
+
+## `ValueListenableBuilder` — Reactive Updates
+
+```dart
+ValueListenableBuilder<List<CapturedLead>>(
+  valueListenable: LeadSyncService.instance.capturedLeads,
+  builder: (_, leads, child) {
+    if (leads.isEmpty) { return _emptyState(); }
+    return Column(
+      children: [
+        _countBanner(leads.length),
+        Expanded(child: _leadList(leads)),
+      ],
+    );
+  },
+)
+```
+If the user confirms a lead while the LeadsScreen is open, `capturedLeads` is updated in `LeadSyncService` and `ValueListenableBuilder` rebuilds automatically — the new lead appears at the top of the list without any manual refresh.
+
+## Empty State
+When `leads.isEmpty`, shows a centered column with a muted `Icons.person_add_alt_1_rounded` icon and explanatory text: "No leads captured yet / Confirm a call prompt to send your first lead."
+
+## Count Banner
+A white card with an orange left border showing "X lead(s) uploaded to CRM" — consistent visual language with the rest of the app's card style.
+
+## `_formatDateTime(int ms)` — Display Logic
+
+```dart
+if (date == today)     → 'Today'
+if (date == yesterday) → 'Yesterday'
+else                   → 'DD/MM/YYYY'
+time                   → '3:45 PM' (12-hour, no leading zero on hour)
+```
+The date comparison uses `DateTime(year, month, day)` with no time component for both the call timestamp and today/yesterday — this normalizes both to midnight and allows `==` comparison across different times of day.
+
+## `_LeadTile` — Private Widget
+
+A self-contained stateless widget rendering:
+- Circular avatar (orange tint background, person icon)
+- Name (bold, dark)
+- Phone number (grey)
+- Timestamp row (clock icon + formatted date/time)
+- Green "Uploaded" badge (right side)
+
+The badge uses `Colors.green.withValues(alpha: 0.10)` background — a light tint, not a solid green block, matching the app's design language of subtle indicators.
 
 ---
 
@@ -1254,20 +1515,43 @@ Kotlin code is compiled to JVM bytecode targeting Java 17. Necessary because mod
 
 # State Management Analysis
 
-## Pattern: Local setState
+## Pattern: setState + ValueNotifier
 
-This project uses Flutter's built-in `setState` exclusively. No external state management library (BLoC, Provider, Riverpod, GetX) is used.
+This project uses two Flutter built-in mechanisms. No external library (BLoC, Provider, Riverpod, GetX) is used.
 
-### Why This Is Correct for This App
+### `setState` — for screen-local state
 
-The app has three meaningful pieces of UI state:
-1. `DashboardScreen._loading` and `_allCalls` — local to Dashboard
-2. `CallLogScreen._state`, `_entries`, `_isSyncing` — local to CallLogScreen
-3. `LoginScreen._isLoading`, `_obscurePassword` — local to Login
+Used where state is owned by one screen and discarded when the screen closes:
+- `DashboardScreen._loading`, `_allCalls`
+- `CallLogScreen._state`, `_entries`, `_isSyncing`
+- `LoginScreen._isLoading`, `_obscurePassword`
 
-None of this state is shared between screens. When a screen closes, its state is discarded. SharedPreferences handles persistence. Services handle cross-cutting concerns.
+### `ValueNotifier<List<CapturedLead>>` — for shared reactive state
 
-A BLoC or Provider would add: abstract classes, events, states, blocs/notifiers, `BlocBuilder`/`Consumer` widgets, dependency injection setup. For three local state variables per screen, this overhead is pure complexity with no benefit.
+`LeadSyncService.capturedLeads` is a `ValueNotifier` that lives in the singleton service. It is observed in two places simultaneously:
+- `DashboardScreen` — shows the lead count in the "Leads Captured" stat card
+- `LeadsScreen` — shows the full list
+
+When `syncNow()` uploads a new lead, it updates `capturedLeads.value`. Both screens rebuild their `ValueListenableBuilder` subtrees automatically — no `setState`, no streams, no controllers.
+
+```
+LeadSyncService.syncNow() uploads lead
+    ↓
+capturedLeads.value = [newLead, ...capturedLeads.value]
+    ↓
+ValueNotifier notifies all listeners
+    ↓
+DashboardScreen ValueListenableBuilder rebuilds → count updates
+LeadsScreen ValueListenableBuilder rebuilds → new row appears at top
+```
+
+### Why ValueNotifier and not setState?
+
+`setState` only rebuilds the widget that calls it. If `DashboardScreen` called `setState`, `LeadsScreen` (which may be open in the navigation stack behind the dashboard) would not update. `ValueNotifier` allows multiple unrelated widgets to react to the same state change, regardless of where they are in the widget tree.
+
+### Why NOT BLoC or Provider?
+
+A BLoC or Provider would add: abstract classes, events, states, blocs/notifiers, `BlocBuilder`/`Consumer` widgets, dependency injection setup. For three local state variables per screen plus one shared list, this overhead is pure complexity with no benefit.
 
 ### How State Flows
 
@@ -1276,22 +1560,22 @@ User action (tap, app resume, call detected)
     ↓
 Async method runs (API call, CallLog.query)
     ↓
-setState(() { _someField = newValue; })
+setState(() { _someField = newValue; })   ← screen-local state
+    OR
+capturedLeads.value = newList             ← shared reactive state
     ↓
-Flutter marks widget as dirty
+Flutter marks affected widgets as dirty
     ↓
-Next frame: build() runs again
+Next frame: build() runs
     ↓
 Widget tree rebuilt with new values
     ↓
-Flutter diffs old tree vs new tree
-    ↓
-Only changed widgets are re-rendered
+Flutter diffs old tree vs new tree → only changed nodes re-rendered
 ```
 
 ### Computed Getters as Derived State
 
-The stat getters (`_totalToday`, `_missedToday`, etc.) are a pattern worth noting. Rather than storing separate count fields and keeping them in sync with `_allCalls`, they are computed on demand from `_allCalls`. This means there is only ONE source of truth: `_allCalls`. You cannot have a bug where `_missedToday` is 3 but `_allCalls.where(missed)` gives 2.
+The stat getters (`_totalToday`, `_missedToday`, etc.) are computed on demand from `_allCalls`. ONE source of truth — `_allCalls`. You cannot have a bug where `_missedToday` is 3 but `_allCalls.where(missed)` gives 2.
 
 ---
 
@@ -1354,13 +1638,15 @@ There is no automatic retry for failed requests. If a request fails due to netwo
 | Models | No | No | No |
 | Core | No | No | No |
 
-Services use `navigatorKey` for navigation — this is a minor violation of pure separation. A cleaner approach would be a callback/stream that screens listen to. However, for this app size, the tradeoff is acceptable: it avoids significant complexity.
+Services use `navigatorKey` for navigation and dialog display — this is a minor violation of pure separation. A cleaner approach would be a callback/stream that screens listen to. However, for this app size, the tradeoff is acceptable: it avoids significant complexity.
+
+`LeadSyncService.capturedLeads` is a `ValueNotifier` that screens observe directly — services "know" they have UI observers. This is intentional: the `ValueNotifier` pattern is lightweight reactive state, not a full coupling of service to screen.
 
 ## Singleton Services
 
-`AuthService.instance` and `LeadSyncService.instance` are singletons. This means their state lives for the entire app lifetime — they never get garbage collected. This is intentional: the token must always be accessible, and the sync state must survive screen navigation.
+`AuthService.instance` and `LeadSyncService.instance` are singletons. Their state lives for the entire app lifetime. This is intentional: the token must always be accessible, sync state must survive screen navigation, and `capturedLeads` must be observable from any screen simultaneously.
 
-The risk: if a singleton holds references to BuildContext (which is tied to a widget's lifetime), it causes memory leaks. This project handles this correctly by never storing BuildContext in services — it accesses context at call time via `navigatorKey.currentContext`.
+The risk: if a singleton holds references to `BuildContext` (tied to a widget's lifetime), it causes memory leaks. This project handles this correctly by never storing `BuildContext` — it accesses context at call time via `navigatorKey.currentContext`, and only during an active dialog show. The `capturedLeads` `ValueNotifier` holds `CapturedLead` data objects, not widget references — safe to live in a singleton.
 
 ---
 
@@ -1408,13 +1694,15 @@ Set lookup is O(1) — checking `_uploadedIds.contains(id)` for 10,000 entries t
 
 ## Potential Issues
 
-**`_uploadedIds.add(id)` runs even on null-context dialog skip** — In `syncNow()`, when `_showConfirmDialog` returns false due to null context, the call is still marked as handled. Calls that occurred while the app was backgrounded (no context) are silently skipped forever, never shown to the user. This is a known design tradeoff documented in the service.
+**`_handledNumbers` is permanent — no way to re-enable a number** — Once a number is added to `_handledNumbers` (confirmed or skipped), it can never be prompted again. If the user tapped Skip by mistake, there is no UI to undo it. A future "manage leads" feature could allow removing numbers from this list.
 
 **`CallLogScreen._syncInBackground()` has its own `_uploadedCallIds`** — This is a separate, in-memory-only set from `LeadSyncService._uploadedIds`. When CallLogScreen is open, a call could be captured by BOTH the screen's sync AND `LeadSyncService`. This is a coupling issue — two independent capture mechanisms running simultaneously. The `ApiService.captureLead()` call in `_syncInBackground()` has no confirmation dialog, bypassing the user consent flow.
 
 **No pagination** — `_entries` in CallLogScreen holds the entire call history in memory. On a device with 5 years of calls, this could be thousands of entries. `ListView.builder` renders lazily, but the full list is loaded into RAM.
 
 **Token age hard-coded to 3 days** — `static const _kMaxAgeDays = 3`. If the backend changes its expiry policy (e.g., to 7 days), this constant must be manually updated. A better approach would be for the login API to return an expiry time and store it.
+
+**`capturedLeads` is prepend-only, never pruned** — Every uploaded lead is prepended to the list and persisted. Over time, this list grows unboundedly. SharedPreferences has a practical size limit, and decoding thousands of JSON strings on startup could slow `start()`. A future improvement would cap the list at a reasonable maximum (e.g., last 200 leads).
 
 ## Naming Conventions
 
