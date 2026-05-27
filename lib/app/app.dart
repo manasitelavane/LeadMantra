@@ -54,9 +54,23 @@ class _SplashState extends State<_Splash> {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    return Scaffold(
       backgroundColor: Colors.white,
-      body: Center(child: CircularProgressIndicator()),
+      body: Center(
+        child: Image.asset(
+          'assets/images/logo_1 1.png',
+          width: 200,
+          fit: BoxFit.contain,
+          errorBuilder: (ctx, err, st) => const Text(
+            'LeadMantraCRM',
+            style: TextStyle(
+              fontSize:   22,
+              fontWeight: FontWeight.w700,
+              color:      Color(0xFF1A237E),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
