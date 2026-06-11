@@ -7,7 +7,6 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../core/theme.dart';
 import '../models/stored_call_entry.dart';
-import '../services/api_service.dart';
 import '../utils/call_log_utils.dart';
 import '../widgets/action_view.dart';
 import '../widgets/call_log_tile.dart';
@@ -37,8 +36,6 @@ class CallLogScreen extends StatefulWidget {
 class _CallLogScreenState extends State<CallLogScreen>
     with WidgetsBindingObserver {
 
-  final _api = ApiService();
-
   static const _kEventChannel =
       EventChannel('com.leadmantracrm.app/call_log_events');
   StreamSubscription<dynamic>? _callLogSub;
@@ -51,7 +48,6 @@ class _CallLogScreenState extends State<CallLogScreen>
   bool                  _isLoading    = false;
   late String?          _callTypeFilter = widget.initialFilter;
 
-  final Set<String>            _uploadedCallIds = {};
   final Map<String, StoredCallEntry> _seenEntries = {};
 
   String? _selectedSimId;
@@ -219,38 +215,9 @@ class _CallLogScreenState extends State<CallLogScreen>
 
     try {
       final deviceEntries = await CallLog.get();
-      final allFromDevice = deviceEntries
-          .map((e) => StoredCallEntry.fromCallLogEntry(e, ''))
-          .toList();
-
-      for (final e in allFromDevice) {
-        _seenEntries.putIfAbsent(e.callId, () => e);
-      }
-
-      final newEntries = allFromDevice
-          .where((e) => !_uploadedCallIds.contains(e.callId))
-          .toList();
-
-      for (final entry in newEntries) {
-        _uploadedCallIds.add(entry.callId);
-        final phone    = entry.number;
-        final simMatch = _selectedSimId == null ||
-            entry.simDisplayName == _selectedSimId;
-        if (phone != null && phone.isNotEmpty && simMatch) {
-          final message = await _api.captureLead(
-            phone:    phone,
-            name:     entry.name,
-            duration: entry.duration,
-          );
-          if (message != null && mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content:  Text(message),
-                duration: const Duration(seconds: 4),
-              ),
-            );
-          }
-        }
+      for (final e in deviceEntries) {
+        final entry = StoredCallEntry.fromCallLogEntry(e, '');
+        _seenEntries.putIfAbsent(entry.callId, () => entry);
       }
 
       final display = _seenEntries.values.toList()
@@ -555,6 +522,12 @@ class _SimFilterBar extends StatelessWidget {
             padding: const EdgeInsets.only(right: 6),
             child: FilterChip(
               label:      Text(sim.value),
+              labelStyle: TextStyle(
+                color: selectedSimId == sim.key
+                    ? Colors.white
+                    : AppTheme.accent,
+                fontWeight: FontWeight.w600,
+              ),
               selected:   selectedSimId == sim.key,
               onSelected: (_) => onSelect(sim.key),
             ),
