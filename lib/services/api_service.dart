@@ -47,8 +47,7 @@ class ApiService {
           success: res.statusCode == 200);
 
       if (res.statusCode == 401) {
-        // Background sync — clear session but don't redirect to login.
-        AuthService.instance.handleExpiredSession(redirect: false);
+        AuthService.instance.handleExpiredSession(redirect: true);
         return null;
       }
 

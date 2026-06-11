@@ -54,10 +54,9 @@ class AuthService {
   static const _loginUrl = ApiEndpoints.login;
   static const _timeout  = Duration(seconds: 30);
 
-  static const _kToken      = 'auth_token';
-  static const _kUser       = 'auth_user';
-  static const _kSavedAt    = 'auth_token_saved_at';
-  static const _kMaxAgeDays = 3; // clear stored token after 3 days
+  static const _kToken   = 'auth_token';
+  static const _kUser    = 'auth_user';
+  static const _kSavedAt = 'auth_token_saved_at';
 
   String?   _token;
   AuthUser? _user;
@@ -70,27 +69,14 @@ class AuthService {
   /// Clears the session if the stored token is older than [_kMaxAgeDays] days.
   Future<void> loadSession() async {
     final prefs     = await SharedPreferences.getInstance();
-    final savedToken  = prefs.getString(_kToken);
-    final savedUser   = prefs.getString(_kUser);
-    final savedAt     = prefs.getInt(_kSavedAt) ?? 0;
+    final savedToken = prefs.getString(_kToken);
+    final savedUser  = prefs.getString(_kUser);
 
     if (savedToken == null || savedUser == null) return;
 
-    final ageDays = DateTime.now()
-            .difference(DateTime.fromMillisecondsSinceEpoch(savedAt))
-            .inDays;
-
-    if (ageDays >= _kMaxAgeDays) {
-      await prefs.remove(_kToken);
-      await prefs.remove(_kUser);
-      await prefs.remove(_kSavedAt);
-      print('[AUTH] Stored token is $ageDays day(s) old — clearing session');
-      return;
-    }
-
     _token = savedToken.trim();
     _user  = AuthUser.fromJson(jsonDecode(savedUser) as Map<String, dynamic>);
-    print('[AUTH] Session restored — user: ${_user!.email} (id: ${_user!.id}), token age: ${ageDays}d');
+    print('[AUTH] Session restored — user: ${_user!.email} (id: ${_user!.id})');
   }
 
   Future<AuthResult> login(String email, String password) async {
