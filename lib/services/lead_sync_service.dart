@@ -22,6 +22,7 @@ class LeadSyncService {
   static const _kUploadedIds     = 'lead_uploaded_ids';
   static const _kHandledNumbers  = 'lead_handled_numbers';
   static const _kCapturedLeads   = 'lead_captured_leads';
+  static const _kSkippedLeads    = 'lead_skipped_leads';
 
   final _api = ApiService();
 
@@ -31,6 +32,9 @@ class LeadSyncService {
 
   // Full list of uploaded leads — dashboard card and leads screen both observe this.
   final capturedLeads = ValueNotifier<List<CapturedLead>>([]);
+
+  // Numbers the user chose to Skip — dashboard card and skipped-leads screen observe this.
+  final skippedLeads = ValueNotifier<List<CapturedLead>>([]);
 
   StreamSubscription<dynamic>? _sub;
   Timer?                       _debounce;
@@ -66,6 +70,11 @@ class LeadSyncService {
     final savedLeads = prefs.getStringList(_kCapturedLeads) ?? [];
     capturedLeads.value = savedLeads.map(CapturedLead.decode).toList();
     print('[SYNC] ${capturedLeads.value.length} lead(s) captured so far');
+
+    // Restore skipped lead details for the skipped-leads screen.
+    final savedSkipped = prefs.getStringList(_kSkippedLeads) ?? [];
+    skippedLeads.value = savedSkipped.map(CapturedLead.decode).toList();
+    print('[SYNC] ${skippedLeads.value.length} lead(s) skipped so far');
 
     _sub ??= _kEventChannel.receiveBroadcastStream().listen(
       (_) {
@@ -169,6 +178,17 @@ class LeadSyncService {
           await _saveUploadedIds();
           _handledNumbers.add(phone);
           await _saveHandledNumbers();
+
+          skippedLeads.value = [
+            CapturedLead(
+              name:      resolvedName,
+              phone:     sample.number ?? phone,
+              timestamp: sample.timestamp ?? DateTime.now().millisecondsSinceEpoch,
+            ),
+            ...skippedLeads.value,
+          ];
+          await _saveSkippedLeads();
+
           print('[SYNC] Lead skipped by user: $phone');
           continue;
         }
@@ -271,6 +291,14 @@ class LeadSyncService {
     await prefs.setStringList(
       _kCapturedLeads,
       capturedLeads.value.map(CapturedLead.encode).toList(),
+    );
+  }
+
+  Future<void> _saveSkippedLeads() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      _kSkippedLeads,
+      skippedLeads.value.map(CapturedLead.encode).toList(),
     );
   }
 

@@ -17,6 +17,7 @@ import 'leads_screen.dart';
 import 'login_screen.dart';
 import 'privacy_policy_screen.dart';
 import 'privacy_web_screen.dart';
+import 'skipped_leads_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -212,19 +213,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   const SizedBox(height: 10),
                   ValueListenableBuilder<List<CapturedLead>>(
                     valueListenable: LeadSyncService.instance.capturedLeads,
-                    builder: (_, leads, child) => _StatsGrid(
-                      totalToday:     _totalToday,
-                      capturedLeads:  leads.length,
-                      missedToday:    _missedToday,
-                      connectedToday: _connectedToday,
-                      onTapTotal:     () => Navigator.push(context,
-                          MaterialPageRoute(builder: (_) => const CallLogScreen())),
-                      onTapLeads:     () => Navigator.push(context,
-                          MaterialPageRoute(builder: (_) => const LeadsScreen())),
-                      onTapMissed:    () => Navigator.push(context,
-                          MaterialPageRoute(builder: (_) => const CallLogScreen(initialFilter: 'missed'))),
-                      onTapConnected: () => Navigator.push(context,
-                          MaterialPageRoute(builder: (_) => const CallLogScreen(initialFilter: 'connected'))),
+                    builder: (_, leads, child) => ValueListenableBuilder<List<CapturedLead>>(
+                      valueListenable: LeadSyncService.instance.skippedLeads,
+                      builder: (_, skipped, child) => _StatsGrid(
+                        totalToday:     _totalToday,
+                        capturedLeads:  leads.length,
+                        skippedLeads:   skipped.length,
+                        connectedToday: _connectedToday,
+                        onTapTotal:     () => Navigator.push(context,
+                            MaterialPageRoute(builder: (_) => const CallLogScreen())),
+                        onTapLeads:     () => Navigator.push(context,
+                            MaterialPageRoute(builder: (_) => const LeadsScreen())),
+                        onTapSkipped:   () => Navigator.push(context,
+                            MaterialPageRoute(builder: (_) => const SkippedLeadsScreen())),
+                        onTapConnected: () => Navigator.push(context,
+                            MaterialPageRoute(builder: (_) => const CallLogScreen(initialFilter: 'connected'))),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 20),
@@ -358,21 +362,21 @@ class _StatsGrid extends StatelessWidget {
   const _StatsGrid({
     required this.totalToday,
     required this.capturedLeads,
-    required this.missedToday,
+    required this.skippedLeads,
     required this.connectedToday,
     this.onTapTotal,
     this.onTapLeads,
-    this.onTapMissed,
+    this.onTapSkipped,
     this.onTapConnected,
   });
 
   final int totalToday;
   final int capturedLeads;
-  final int missedToday;
+  final int skippedLeads;
   final int connectedToday;
   final VoidCallback? onTapTotal;
   final VoidCallback? onTapLeads;
-  final VoidCallback? onTapMissed;
+  final VoidCallback? onTapSkipped;
   final VoidCallback? onTapConnected;
 
   @override
@@ -402,12 +406,12 @@ class _StatsGrid extends StatelessWidget {
           onTap: onTapLeads,
         ),
         _StatCard(
-          icon:  Icons.call_missed_rounded,
-          color: Colors.red,
-          label: 'Missed',
-          value: '$missedToday',
-          sub:   'follow up needed',
-          onTap: onTapMissed,
+          icon:  Icons.person_off_rounded,
+          color: Colors.deepOrange,
+          label: 'Skipped',
+          value: '$skippedLeads',
+          sub:   'leads skipped',
+          onTap: onTapSkipped,
         ),
         _StatCard(
           icon:  Icons.check_circle_rounded,
