@@ -160,17 +160,14 @@ class LeadSyncService {
 
         final (confirmed, resolvedName) = dialogResult;
 
-        // Mark ALL call IDs for this number (handles the "3 calls, 1 dialog" case).
-        for (final e in entries) {
-          _uploadedIds.add(_callId(e));
-        }
-        await _saveUploadedIds();
-
-        // Block this number permanently — no future dialogs.
-        _handledNumbers.add(phone);
-        await _saveHandledNumbers();
-
         if (!confirmed) {
+          // User skipped — block this number permanently, no future dialogs.
+          for (final e in entries) {
+            _uploadedIds.add(_callId(e));
+          }
+          await _saveUploadedIds();
+          _handledNumbers.add(phone);
+          await _saveHandledNumbers();
           print('[SYNC] Lead skipped by user: $phone');
           continue;
         }
@@ -184,17 +181,31 @@ class LeadSyncService {
           name:     resolvedName,
           duration: sample.duration ?? 0,
         );
-        if (result != null) {
-          capturedLeads.value = [
-            CapturedLead(
-              name:      resolvedName,
-              phone:     displayPhone,
-              timestamp: sample.timestamp ?? DateTime.now().millisecondsSinceEpoch,
-            ),
-            ...capturedLeads.value,
-          ];
-          await _saveCapturedLeads();
+
+        if (result == null) {
+          // API call failed (e.g. no internet) — leave unmarked so this
+          // number is prompted again on the next sync/app open.
+          print('[SYNC] Lead capture failed, will retry: $phone');
+          continue;
         }
+
+        // Only mark handled once the lead is confirmed captured server-side.
+        for (final e in entries) {
+          _uploadedIds.add(_callId(e));
+        }
+        await _saveUploadedIds();
+        _handledNumbers.add(phone);
+        await _saveHandledNumbers();
+
+        capturedLeads.value = [
+          CapturedLead(
+            name:      resolvedName,
+            phone:     displayPhone,
+            timestamp: sample.timestamp ?? DateTime.now().millisecondsSinceEpoch,
+          ),
+          ...capturedLeads.value,
+        ];
+        await _saveCapturedLeads();
       }
 
       print('[SYNC] Done — handled numbers: ${_handledNumbers.length}, captured: ${capturedLeads.value.length}');
