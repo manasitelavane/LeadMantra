@@ -51,6 +51,8 @@ class ApiService {
         return null;
       }
 
+      if (res.statusCode != 200) return null;
+
       try {
         final json = jsonDecode(res.body) as Map<String, dynamic>;
         return json['message'] as String?;

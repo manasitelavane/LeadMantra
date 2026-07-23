@@ -152,11 +152,13 @@ class LeadSyncService {
         // Show dialog. Returns null when there is no navigator context
         // (app backgrounded mid-loop) — do NOT mark anything so the number
         // will be prompted again next time the app is opened.
-        final confirmed = await _showConfirmDialog(name, phone);
-        if (confirmed == null) {
+        final dialogResult = await _showConfirmDialog(name, phone);
+        if (dialogResult == null) {
           print('[SYNC] No context for $phone — will retry next open');
           continue;
         }
+
+        final (confirmed, resolvedName) = dialogResult;
 
         // Mark ALL call IDs for this number (handles the "3 calls, 1 dialog" case).
         for (final e in entries) {
@@ -179,13 +181,13 @@ class LeadSyncService {
         final displayPhone = sample.number ?? phone;
         final result = await _api.captureLead(
           phone:    displayPhone,
-          name:     sample.name,
+          name:     resolvedName,
           duration: sample.duration ?? 0,
         );
         if (result != null) {
           capturedLeads.value = [
             CapturedLead(
-              name:      name,
+              name:      resolvedName,
               phone:     displayPhone,
               timestamp: sample.timestamp ?? DateTime.now().millisecondsSinceEpoch,
             ),
@@ -205,16 +207,16 @@ class LeadSyncService {
 
   // ── Confirmation dialog ─────────────────────────────────────────────────────
 
-  // Returns null  → no context, dialog not shown — call will retry next app open.
-  // Returns true  → user confirmed (checkbox + Send Lead).
-  // Returns false → user tapped Skip.
-  Future<bool?> _showConfirmDialog(String name, String phone) async {
+  // Returns null        → no context, dialog not shown — call will retry next app open.
+  // Returns (true, name)  → user confirmed; name is whatever was entered (or original).
+  // Returns (false, name) → user tapped Skip.
+  Future<(bool, String)?> _showConfirmDialog(String name, String phone) async {
     final ctx = navigatorKey.currentContext;
     if (ctx == null) {
       print('[SYNC] No context — dialog skipped for $phone (will retry next open)');
       return null;
     }
-    return showDialog<bool>(
+    return showDialog<(bool, String)>(
       context: ctx,
       barrierDismissible: false,
       builder: (_) => LeadConfirmDialog(name: name, phone: phone),
