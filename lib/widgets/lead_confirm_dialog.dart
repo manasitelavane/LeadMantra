@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import '../core/connectivity_util.dart';
 import '../core/theme.dart';
 
 class LeadConfirmDialog extends StatefulWidget {
@@ -19,7 +21,9 @@ class LeadConfirmDialog extends StatefulWidget {
 
 class _LeadConfirmDialogState extends State<LeadConfirmDialog> {
   bool _checked = false;
+  late bool _hasInternet;
   late final TextEditingController _nameCtrl;
+  Timer? _connectivityTimer;
 
   bool get _isUnknown =>
       widget.name.isEmpty || widget.name == 'Unknown';
@@ -33,11 +37,23 @@ class _LeadConfirmDialogState extends State<LeadConfirmDialog> {
   @override
   void initState() {
     super.initState();
-    _nameCtrl = TextEditingController();
+    _nameCtrl     = TextEditingController();
+    _hasInternet  = widget.hasInternet;
+
+    // Keep re-checking while the dialog is open so the button enables
+    // itself the moment internet/Wi-Fi comes back, without needing to
+    // close and reopen the popup.
+    _connectivityTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
+      final online = await hasInternetConnection();
+      if (mounted && online != _hasInternet) {
+        setState(() => _hasInternet = online);
+      }
+    });
   }
 
   @override
   void dispose() {
+    _connectivityTimer?.cancel();
     _nameCtrl.dispose();
     super.dispose();
   }
@@ -133,17 +149,23 @@ class _LeadConfirmDialogState extends State<LeadConfirmDialog> {
               ],
             ),
           ),
-          if (!widget.hasInternet) ...[
+          if (!_hasInternet) ...[
             const SizedBox(height: 6),
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.cloud_off_rounded,
-                    size: 14, color: Colors.red.shade700),
+                Padding(
+                  padding: const EdgeInsets.only(top: 1),
+                  child: Icon(Icons.cloud_off_rounded,
+                      size: 14, color: Colors.red.shade700),
+                ),
                 const SizedBox(width: 6),
-                Text(
-                  'No internet — lead cannot be sent right now',
-                  style: TextStyle(
-                      fontSize: 12, color: Colors.red.shade700),
+                Expanded(
+                  child: Text(
+                    'No internet — lead cannot be sent right now',
+                    style: TextStyle(
+                        fontSize: 12, color: Colors.red.shade700),
+                  ),
                 ),
               ],
             ),
@@ -163,7 +185,7 @@ class _LeadConfirmDialogState extends State<LeadConfirmDialog> {
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8)),
           ),
-          onPressed: (_checked && widget.hasInternet)
+          onPressed: (_checked && _hasInternet)
               ? () => Navigator.pop(context, (true, _resolvedName))
               : null,
           child: const Text('Send Lead'),
