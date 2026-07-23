@@ -6,10 +6,12 @@ class LeadConfirmDialog extends StatefulWidget {
     super.key,
     required this.name,
     required this.phone,
+    required this.hasInternet,
   });
 
   final String name;
   final String phone;
+  final bool   hasInternet;
 
   @override
   State<LeadConfirmDialog> createState() => _LeadConfirmDialogState();
@@ -131,6 +133,21 @@ class _LeadConfirmDialogState extends State<LeadConfirmDialog> {
               ],
             ),
           ),
+          if (!widget.hasInternet) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Icon(Icons.cloud_off_rounded,
+                    size: 14, color: Colors.red.shade700),
+                const SizedBox(width: 6),
+                Text(
+                  'No internet — lead cannot be sent right now',
+                  style: TextStyle(
+                      fontSize: 12, color: Colors.red.shade700),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
       actions: [
@@ -146,7 +163,7 @@ class _LeadConfirmDialogState extends State<LeadConfirmDialog> {
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8)),
           ),
-          onPressed: _checked
+          onPressed: (_checked && widget.hasInternet)
               ? () => Navigator.pop(context, (true, _resolvedName))
               : null,
           child: const Text('Send Lead'),

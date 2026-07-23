@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/connectivity_util.dart';
 import '../core/navigator_key.dart';
 import '../models/captured_lead.dart';
 import '../widgets/lead_confirm_dialog.dart';
@@ -227,10 +228,29 @@ class LeadSyncService {
       print('[SYNC] No context — dialog skipped for $phone (will retry next open)');
       return null;
     }
+
+    final online = await hasInternetConnection();
+    if (!ctx.mounted) {
+      print('[SYNC] Context unmounted after connectivity check — dialog skipped for $phone (will retry next open)');
+      return null;
+    }
+
+    if (!online) {
+      ScaffoldMessenger.of(ctx).clearSnackBars();
+      ScaffoldMessenger.of(ctx).showSnackBar(
+        const SnackBar(
+          content: Text('No internet connection — you can skip, but new leads can\'t be sent right now.'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 3),
+        ),
+      );
+    }
+
     return showDialog<(bool, String)>(
       context: ctx,
       barrierDismissible: false,
-      builder: (_) => LeadConfirmDialog(name: name, phone: phone),
+      builder: (_) => LeadConfirmDialog(name: name, phone: phone, hasInternet: online),
     );
   }
 
