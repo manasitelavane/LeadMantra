@@ -50,8 +50,6 @@ class _CallLogScreenState extends State<CallLogScreen>
 
   final Map<String, StoredCallEntry> _seenEntries = {};
 
-  String? _selectedSimId;
-
   DateTimeRange _dateRange = DateTimeRange(
     start: DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day),
     end:   DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day),
@@ -59,35 +57,18 @@ class _CallLogScreenState extends State<CallLogScreen>
 
   // ── Computed ──────────────────────────────────────────────────────────────
 
+  // Display-only filtering (date range + optional type filter). Never touches
+  // LeadSyncService — nothing here ever triggers a lead popup or API call.
   List<StoredCallEntry> get _filteredEntries {
     final rangeEnd = DateTime(
         _dateRange.end.year, _dateRange.end.month, _dateRange.end.day + 1);
     return _entries.where((e) {
       final dt = DateTime.fromMillisecondsSinceEpoch(e.timestamp);
       if (dt.isBefore(_dateRange.start) || !dt.isBefore(rangeEnd)) return false;
-      if (_selectedSimId != null && e.simDisplayName != _selectedSimId) return false;
       if (_callTypeFilter == 'missed'    && e.callType != 'missed') return false;
       if (_callTypeFilter == 'connected' && !((e.callType == 'incoming' || e.callType == 'outgoing') && e.duration > 0)) return false;
       return true;
     }).toList();
-  }
-
-  // Groups by simDisplayName (carrier name) — avoids duplicate chips on single-SIM
-  // devices that expose multiple phoneAccountIds (VoIP, WhatsApp, system accounts).
-  // Those extra accounts often report a bare numeral (e.g. "3") instead of a real
-  // carrier name — real carrier names always contain a letter, so numeral-only
-  // labels are dropped rather than shown as a phantom SIM chip.
-  static final RegExp _hasLetter = RegExp('[A-Za-z]');
-
-  Map<String, String> get _availableSims {
-    final sims = <String, String>{};
-    for (final e in _entries) {
-      final name = e.simDisplayName;
-      if (name == null || name.isEmpty) continue;
-      if (!_hasLetter.hasMatch(name)) continue;
-      sims[name] = name;
-    }
-    return sims;
   }
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────
@@ -378,14 +359,6 @@ class _CallLogScreenState extends State<CallLogScreen>
           count:    filtered.length,
           onTap:    _pickDate,
         ),
-        if (_availableSims.length > 1)
-          _SimFilterBar(
-            sims:           _availableSims,
-            selectedSimId:  _selectedSimId,
-            onSelect: (id) => setState(() =>
-                _selectedSimId = _selectedSimId == id ? null : id),
-            onClear: ()    => setState(() => _selectedSimId = null),
-          ),
         if (_isSyncing)
           LinearProgressIndicator(
             minHeight: 2,
@@ -495,60 +468,3 @@ class _DateBar extends StatelessWidget {
   }
 }
 
-// ── SIM filter bar ────────────────────────────────────────────────────────────
-
-class _SimFilterBar extends StatelessWidget {
-  const _SimFilterBar({
-    required this.sims,
-    required this.selectedSimId,
-    required this.onSelect,
-    required this.onClear,
-  });
-
-  final Map<String, String> sims;
-  final String?             selectedSimId;
-  final ValueChanged<String> onSelect;
-  final VoidCallback         onClear;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin:  const EdgeInsets.fromLTRB(12, 0, 12, 4),
-      padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
-      decoration: BoxDecoration(
-        color:        Colors.white,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.sim_card_rounded,
-              size: 13, color: AppTheme.primary),
-          const SizedBox(width: 6),
-          ...sims.entries.map((sim) => Padding(
-            padding: const EdgeInsets.only(right: 6),
-            child: FilterChip(
-              label:      Text(sim.value),
-              labelStyle: TextStyle(
-                color: selectedSimId == sim.key
-                    ? Colors.white
-                    : AppTheme.accent,
-                fontWeight: FontWeight.w600,
-              ),
-              selected:   selectedSimId == sim.key,
-              onSelected: (_) => onSelect(sim.key),
-            ),
-          )),
-          if (selectedSimId != null)
-            TextButton(
-              style: TextButton.styleFrom(
-                padding:        EdgeInsets.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              onPressed: onClear,
-              child: const Text('All'),
-            ),
-        ],
-      ),
-    );
-  }
-}

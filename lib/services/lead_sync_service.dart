@@ -108,6 +108,12 @@ class LeadSyncService {
       // are not leads. Some OEMs (e.g. MIUI) log an unanswered incoming call
       // as CallType.incoming with duration 0 instead of CallType.missed, so
       // the duration check is required to reliably exclude them.
+      //
+      // A missed call never enters `relevant`, so its number is never seen by
+      // Pass 1/2 below and can never be added to _handledNumbers. That number
+      // stays completely untouched — the next incoming/outgoing call from it
+      // that actually connects will still trigger a popup normally, exactly
+      // as if the missed call had never happened.
       final relevant = deviceEntries
           .where((e) =>
               (e.callType == CallType.incoming ||
