@@ -104,11 +104,15 @@ class LeadSyncService {
     try {
       final deviceEntries = await CallLog.query(dateTimeFrom: _syncStartedAt);
 
-      // Only incoming and outgoing — missed calls are not leads.
+      // Only incoming/outgoing calls that actually connected — missed calls
+      // are not leads. Some OEMs (e.g. MIUI) log an unanswered incoming call
+      // as CallType.incoming with duration 0 instead of CallType.missed, so
+      // the duration check is required to reliably exclude them.
       final relevant = deviceEntries
           .where((e) =>
-              e.callType == CallType.incoming ||
-              e.callType == CallType.outgoing)
+              (e.callType == CallType.incoming ||
+                  e.callType == CallType.outgoing) &&
+              (e.duration ?? 0) > 0)
           .toList();
 
       // ── Pass 1: group calls by phone number ──────────────────────────────

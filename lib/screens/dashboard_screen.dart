@@ -111,13 +111,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int get _totalToday     => _allCalls.length;
   int get _missedToday    => _allCalls.where((e) => e.callType == 'missed').length;
   int get _connectedToday => _allCalls.where(
-      (e) => e.callType == 'incoming' && e.duration > 0).length;
+      (e) => (e.callType == 'incoming' || e.callType == 'outgoing') && e.duration > 0).length;
 
   int get _pipelineNew       => _missedToday;
   int get _pipelineContacted => _allCalls.where(
       (e) => e.callType == 'incoming' || e.callType == 'outgoing').length;
   int get _pipelineConverted => _allCalls.where(
-      (e) => e.callType == 'incoming' && e.duration > 60).length;
+      (e) => (e.callType == 'incoming' || e.callType == 'outgoing') && e.duration > 60).length;
 
   // ── Navigation ─────────────────────────────────────────────────────────────
 

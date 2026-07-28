@@ -67,7 +67,7 @@ class _CallLogScreenState extends State<CallLogScreen>
       if (dt.isBefore(_dateRange.start) || !dt.isBefore(rangeEnd)) return false;
       if (_selectedSimId != null && e.simDisplayName != _selectedSimId) return false;
       if (_callTypeFilter == 'missed'    && e.callType != 'missed') return false;
-      if (_callTypeFilter == 'connected' && !(e.callType == 'incoming' && e.duration > 0)) return false;
+      if (_callTypeFilter == 'connected' && !((e.callType == 'incoming' || e.callType == 'outgoing') && e.duration > 0)) return false;
       return true;
     }).toList();
   }
