@@ -74,11 +74,17 @@ class _CallLogScreenState extends State<CallLogScreen>
 
   // Groups by simDisplayName (carrier name) — avoids duplicate chips on single-SIM
   // devices that expose multiple phoneAccountIds (VoIP, WhatsApp, system accounts).
+  // Those extra accounts often report a bare numeral (e.g. "3") instead of a real
+  // carrier name — real carrier names always contain a letter, so numeral-only
+  // labels are dropped rather than shown as a phantom SIM chip.
+  static final RegExp _hasLetter = RegExp('[A-Za-z]');
+
   Map<String, String> get _availableSims {
     final sims = <String, String>{};
     for (final e in _entries) {
       final name = e.simDisplayName;
       if (name == null || name.isEmpty) continue;
+      if (!_hasLetter.hasMatch(name)) continue;
       sims[name] = name;
     }
     return sims;
