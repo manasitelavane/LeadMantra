@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:call_log/call_log.dart';
@@ -26,22 +27,39 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObserver {
+  static const _kEventChannel =
+      EventChannel('com.leadmantracrm.app/call_log_events');
+
   bool                  _loading  = true;
   List<StoredCallEntry> _allCalls = [];
+
+  StreamSubscription<dynamic>? _callLogSub;
+  Timer?                       _refreshDebounce;
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) => _init());
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _callLogSub?.cancel();
+    _refreshDebounce?.cancel();
     LeadSyncService.instance.stop();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    _loadStats();
+    LeadSyncService.instance.syncNow();
   }
 
   Future<void> _init() async {
@@ -67,6 +85,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await _loadStats();
     // Catch up on any calls that happened while the app was closed.
     LeadSyncService.instance.syncNow();
+    _subscribeToCallLogChanges();
+  }
+
+  // Auto-refresh the stat cards live while the Dashboard is open, whenever
+  // the device call log changes (new call logged, either end).
+  void _subscribeToCallLogChanges() {
+    if (!Platform.isAndroid) return;
+    _callLogSub ??= _kEventChannel.receiveBroadcastStream().listen(
+      (_) {
+        _refreshDebounce?.cancel();
+        _refreshDebounce = Timer(const Duration(seconds: 2), _loadStats);
+      },
+      onError: (_) {},
+    );
   }
 
   Future<bool> _hasConsented() async {
