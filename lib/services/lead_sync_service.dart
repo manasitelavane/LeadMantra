@@ -247,6 +247,36 @@ class LeadSyncService {
     }
   }
 
+  // ── Manual conversion from Skipped Leads screen ─────────────────────────────
+
+  /// Sends a previously-skipped number as a lead now. This is the second (and
+  /// only other) place in the app that ever calls the capture-lead API — the
+  /// first being the "Send Lead" button in the popup dialog above.
+  /// Returns true only once the server has confirmed the lead was created.
+  Future<bool> convertSkippedToLead(CapturedLead skipped) async {
+    final result = await _api.captureLead(
+      phone:    skipped.phone,
+      name:     skipped.name,
+      duration: 0,
+    );
+    if (result == null) return false;
+
+    skippedLeads.value =
+        skippedLeads.value.where((l) => l.phone != skipped.phone).toList();
+    await _saveSkippedLeads();
+
+    capturedLeads.value = [
+      CapturedLead(
+        name:      skipped.name,
+        phone:     skipped.phone,
+        timestamp: DateTime.now().millisecondsSinceEpoch,
+      ),
+      ...capturedLeads.value,
+    ];
+    await _saveCapturedLeads();
+    return true;
+  }
+
   // ── Confirmation dialog ─────────────────────────────────────────────────────
 
   // Returns null        → no context, dialog not shown — call will retry next app open.

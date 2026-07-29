@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../core/connectivity_util.dart';
 import '../core/theme.dart';
 import '../models/captured_lead.dart';
 import '../services/lead_sync_service.dart';
@@ -132,14 +133,66 @@ class SkippedLeadsScreen extends StatelessWidget {
   }
 }
 
-class _SkippedLeadTile extends StatelessWidget {
+class _SkippedLeadTile extends StatefulWidget {
   const _SkippedLeadTile({required this.lead, required this.formattedTime});
 
   final CapturedLead lead;
   final String       formattedTime;
 
   @override
+  State<_SkippedLeadTile> createState() => _SkippedLeadTileState();
+}
+
+class _SkippedLeadTileState extends State<_SkippedLeadTile> {
+  bool _sending = false;
+
+  Future<void> _generateLead() async {
+    if (_sending) return;
+
+    final online = await hasInternetConnection();
+    if (!mounted) return;
+    if (!online) {
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No internet connection — try again once you\'re back online.'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _sending = true);
+    final success = await LeadSyncService.instance.convertSkippedToLead(widget.lead);
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).clearSnackBars();
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${widget.lead.name} sent as a lead'),
+          backgroundColor: const Color(0xFF2E7D32),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      // No need to reset _sending — this tile is removed from the list once
+      // skippedLeads updates, since the parent rebuilds via ValueListenableBuilder.
+    } else {
+      setState(() => _sending = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not send lead — please try again.'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final lead = widget.lead;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -190,7 +243,7 @@ class _SkippedLeadTile extends StatelessWidget {
                         size: 11, color: Colors.grey[400]),
                     const SizedBox(width: 4),
                     Text(
-                      formattedTime,
+                      widget.formattedTime,
                       style: TextStyle(fontSize: 11, color: Colors.grey[400]),
                     ),
                   ],
@@ -198,20 +251,48 @@ class _SkippedLeadTile extends StatelessWidget {
               ],
             ),
           ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color:        Colors.deepOrange.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Text(
-              'Skipped',
-              style: TextStyle(
-                fontSize:   10,
-                fontWeight: FontWeight.w600,
-                color:      Colors.deepOrange,
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color:        Colors.deepOrange.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  'Skipped',
+                  style: TextStyle(
+                    fontSize:   10,
+                    fontWeight: FontWeight.w600,
+                    color:      Colors.deepOrange,
+                  ),
+                ),
               ),
-            ),
+              const SizedBox(height: 6),
+              SizedBox(
+                height: 26,
+                child: TextButton(
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  onPressed: _sending ? null : _generateLead,
+                  child: _sending
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text(
+                          'Generate Lead',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                        ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
