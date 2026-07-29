@@ -9,6 +9,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../core/theme.dart';
 import '../models/captured_lead.dart';
 import '../models/stored_call_entry.dart';
+import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../services/lead_sync_service.dart';
 import '../widgets/call_log_tile.dart';
@@ -33,6 +34,12 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
 
   bool                  _loading  = true;
   List<StoredCallEntry> _allCalls = [];
+
+  // Backend-truth lead count (server total, across all sources/devices) —
+  // falls back to the local capturedLeads count while loading or offline.
+  int? _leadsCapturedTotal;
+
+  final _api = ApiService();
 
   StreamSubscription<dynamic>? _callLogSub;
   Timer?                       _refreshDebounce;
@@ -114,6 +121,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
   Future<void> _loadStats() async {
     if (!mounted) return;
     setState(() => _loading = true);
+    unawaited(_loadLeadsTotal());
     try {
       if (!Platform.isAndroid) { setState(() => _loading = false); return; }
 
@@ -135,6 +143,17 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
       // Ignore other errors silently on dashboard.
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  // Backend is the source of truth for total leads captured (includes leads
+  // created via web/other devices, not just this device's local history).
+  // meta.total is the full count regardless of how many entries `data` holds
+  // for this page, so a plain first-page fetch is enough.
+  Future<void> _loadLeadsTotal() async {
+    final page = await _api.fetchLeads(page: 1);
+    if (mounted && page != null) {
+      setState(() => _leadsCapturedTotal = page.meta.total);
     }
   }
 
@@ -249,7 +268,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                       valueListenable: LeadSyncService.instance.skippedLeads,
                       builder: (_, skipped, child) => _StatsGrid(
                         totalToday:     _totalToday,
-                        capturedLeads:  leads.length,
+                        capturedLeads:  _leadsCapturedTotal ?? leads.length,
                         skippedLeads:   skipped.length,
                         connectedToday: _connectedToday,
                         onTapTotal:     () => Navigator.push(context,
