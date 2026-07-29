@@ -80,6 +80,7 @@ class ApiService {
             headers: {
               'Content-Type':  'application/json',
               'Authorization': 'Bearer ${AuthService.instance.token ?? ''}',
+              'X-User-Id':     '${AuthService.instance.user?.id ?? ''}',
             },
             body: jsonEncode({
               'search':   search,
