@@ -1,13 +1,83 @@
 import 'package:flutter/material.dart';
 import '../core/theme.dart';
-import '../models/captured_lead.dart';
-import '../services/lead_sync_service.dart';
+import '../models/remote_lead.dart';
+import '../services/api_service.dart';
 
-class LeadsScreen extends StatelessWidget {
+class LeadsScreen extends StatefulWidget {
   const LeadsScreen({super.key});
 
-  String _formatDateTime(int ms) {
-    final dt  = DateTime.fromMillisecondsSinceEpoch(ms);
+  @override
+  State<LeadsScreen> createState() => _LeadsScreenState();
+}
+
+enum _LoadState { loading, loaded, error }
+
+class _LeadsScreenState extends State<LeadsScreen> {
+  final _api             = ApiService();
+  final _scrollController = ScrollController();
+
+  final List<RemoteLead> _leads = [];
+  RemoteLeadsMeta?        _meta;
+  _LoadState              _state       = _LoadState.loading;
+  bool                    _loadingMore = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_loadingMore) return;
+    if (_meta == null || !_meta!.hasMore) return;
+    if (_scrollController.position.pixels <
+        _scrollController.position.maxScrollExtent - 200) {
+      return;
+    }
+    _loadMore();
+  }
+
+  Future<void> _load() async {
+    setState(() => _state = _LoadState.loading);
+    final page = await _api.fetchLeads(page: 1);
+    if (!mounted) return;
+    if (page == null) {
+      setState(() => _state = _LoadState.error);
+      return;
+    }
+    setState(() {
+      _leads
+        ..clear()
+        ..addAll(page.leads);
+      _meta  = page.meta;
+      _state = _LoadState.loaded;
+    });
+  }
+
+  Future<void> _loadMore() async {
+    final nextPage = _meta?.nextPage;
+    if (nextPage == null) return;
+    setState(() => _loadingMore = true);
+    final page = await _api.fetchLeads(page: nextPage);
+    if (!mounted) return;
+    setState(() {
+      _loadingMore = false;
+      if (page != null) {
+        _leads.addAll(page.leads);
+        _meta = page.meta;
+      }
+    });
+  }
+
+  String _formatDateTime(DateTime dt) {
     final now = DateTime.now();
     final today     = DateTime(now.year, now.month, now.day);
     final yesterday = today.subtract(const Duration(days: 1));
@@ -47,38 +117,75 @@ class LeadsScreen extends StatelessWidget {
           child: Container(color: AppTheme.accent, height: 3),
         ),
       ),
-      body: ValueListenableBuilder<List<CapturedLead>>(
-        valueListenable: LeadSyncService.instance.capturedLeads,
-        builder: (_, leads, child) {
-          if (leads.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.person_add_alt_1_rounded,
-                      size: 52, color: Colors.grey.withValues(alpha: 0.35)),
-                  const SizedBox(height: 14),
-                  const Text(
-                    'No leads captured yet',
-                    style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF555555)),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Confirm a call prompt to send your first lead.',
-                    style: TextStyle(fontSize: 12, color: Colors.grey[400]),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            );
-          }
+      body: _buildBody(),
+    );
+  }
 
-          return Column(
+  Widget _buildBody() {
+    switch (_state) {
+      case _LoadState.loading:
+        return const Center(child: CircularProgressIndicator());
+
+      case _LoadState.error:
+        return Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              // count banner
+              Icon(Icons.cloud_off_rounded,
+                  size: 52, color: Colors.grey.withValues(alpha: 0.35)),
+              const SizedBox(height: 14),
+              const Text(
+                'Couldn\'t load leads',
+                style: TextStyle(
+                    fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF555555)),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Check your connection and try again.',
+                style: TextStyle(fontSize: 12, color: Colors.grey[400]),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: _load,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primary,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        );
+
+      case _LoadState.loaded:
+        if (_leads.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.person_add_alt_1_rounded,
+                    size: 52, color: Colors.grey.withValues(alpha: 0.35)),
+                const SizedBox(height: 14),
+                const Text(
+                  'No leads captured yet',
+                  style: TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF555555)),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Confirm a call prompt to send your first lead.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[400]),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          );
+        }
+
+        return RefreshIndicator(
+          onRefresh: _load,
+          child: Column(
+            children: [
               Container(
                 margin:  const EdgeInsets.fromLTRB(16, 12, 16, 4),
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -102,7 +209,8 @@ class LeadsScreen extends StatelessWidget {
                         size: 14, color: AppTheme.accent),
                     const SizedBox(width: 8),
                     Text(
-                      '${leads.length} lead${leads.length == 1 ? '' : 's'} uploaded to CRM',
+                      '${_meta?.total ?? _leads.length} lead'
+                      '${(_meta?.total ?? _leads.length) == 1 ? '' : 's'} in your CRM',
                       style: const TextStyle(
                         fontSize:   13,
                         fontWeight: FontWeight.w600,
@@ -112,31 +220,59 @@ class LeadsScreen extends StatelessWidget {
                   ],
                 ),
               ),
-
               Expanded(
                 child: ListView.separated(
+                  controller:       _scrollController,
+                  physics:          const AlwaysScrollableScrollPhysics(),
                   padding:          const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                  itemCount:        leads.length,
+                  itemCount:        _leads.length + (_loadingMore ? 1 : 0),
                   separatorBuilder: (_, i) => const SizedBox(height: 8),
-                  itemBuilder: (_, i) => _LeadTile(
-                    lead:            leads[i],
-                    formattedTime:   _formatDateTime(leads[i].timestamp),
-                  ),
+                  itemBuilder: (_, i) {
+                    if (i >= _leads.length) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 16),
+                        child: Center(
+                          child: SizedBox(
+                            width: 20, height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
+                      );
+                    }
+                    return _LeadTile(
+                      lead:          _leads[i],
+                      formattedTime: _formatDateTime(_leads[i].createdAt),
+                    );
+                  },
                 ),
               ),
             ],
-          );
-        },
-      ),
-    );
+          ),
+        );
+    }
   }
 }
 
 class _LeadTile extends StatelessWidget {
   const _LeadTile({required this.lead, required this.formattedTime});
 
-  final CapturedLead lead;
-  final String       formattedTime;
+  final RemoteLead lead;
+  final String     formattedTime;
+
+  Color get _statusColor {
+    switch (lead.status.toLowerCase()) {
+      case 'converted':
+      case 'won':
+        return Colors.green;
+      case 'contacted':
+        return AppTheme.accent;
+      case 'lost':
+        return Colors.red;
+      case 'new':
+      default:
+        return AppTheme.primary;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -198,18 +334,19 @@ class _LeadTile extends StatelessWidget {
               ],
             ),
           ),
+          const SizedBox(width: 8),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color:        Colors.green.withValues(alpha: 0.10),
+              color:        _statusColor.withValues(alpha: 0.10),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: const Text(
-              'Uploaded',
+            child: Text(
+              lead.status,
               style: TextStyle(
                 fontSize:   10,
                 fontWeight: FontWeight.w600,
-                color:      Colors.green,
+                color:      _statusColor,
               ),
             ),
           ),

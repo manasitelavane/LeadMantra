@@ -10,4 +10,7 @@ class ApiEndpoints {
 
   // Call Leads
   static const String captureCallLead = '$baseUrl/call-lead/capture';
+
+  // Leads
+  static const String leadsList = '$baseUrl/mobile/leads/list';
 }

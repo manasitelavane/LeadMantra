@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../core/api_endpoints.dart';
 import '../core/app_config.dart';
+import '../models/remote_lead.dart';
 import 'auth_service.dart';
 
 class ApiService {
@@ -61,6 +62,56 @@ class ApiService {
       }
     } catch (e) {
       print('[API] captureLead error: $e');
+      return null;
+    }
+  }
+
+  Future<RemoteLeadsPage?> fetchLeads({
+    String search  = '',
+    String status  = '',
+    String source  = '',
+    int    perPage = 20,
+    int    page    = 1,
+  }) async {
+    try {
+      final res = await _client
+          .post(
+            Uri.parse(ApiEndpoints.leadsList),
+            headers: {
+              'Content-Type':  'application/json',
+              'Authorization': 'Bearer ${AuthService.instance.token ?? ''}',
+            },
+            body: jsonEncode({
+              'search':   search,
+              'status':   status,
+              'source':   source,
+              'per_page': perPage,
+              'page':     page,
+            }),
+          )
+          .timeout(_timeout);
+
+      print('[API] leads/list ← ${res.statusCode} ${res.body}');
+      showApiSnackbar('POST /mobile/leads/list', res.statusCode,
+          success: res.statusCode == 200);
+
+      if (res.statusCode == 401) {
+        AuthService.instance.handleExpiredSession(redirect: true);
+        return null;
+      }
+      if (res.statusCode != 200) return null;
+
+      final json = jsonDecode(res.body) as Map<String, dynamic>;
+      if (json['success'] != true) return null;
+
+      final leads = (json['data'] as List<dynamic>? ?? const [])
+          .map((e) => RemoteLead.fromJson(e as Map<String, dynamic>))
+          .toList();
+      final meta = RemoteLeadsMeta.fromJson(
+          json['meta'] as Map<String, dynamic>? ?? const {});
+      return RemoteLeadsPage(leads: leads, meta: meta);
+    } catch (e) {
+      print('[API] leads/list error: $e');
       return null;
     }
   }
