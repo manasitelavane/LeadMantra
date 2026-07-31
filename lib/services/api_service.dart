@@ -52,7 +52,13 @@ class ApiService {
         return null;
       }
 
-      if (res.statusCode != 200) return null;
+      if (res.statusCode != 200) {
+        print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        print('[LEAD CAPTURE] ❌ API ERROR — status ${res.statusCode}');
+        print('[LEAD CAPTURE] Response body: ${res.body}');
+        print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        return null;
+      }
 
       try {
         final json = jsonDecode(res.body) as Map<String, dynamic>;

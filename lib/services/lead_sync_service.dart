@@ -194,6 +194,7 @@ class LeadSyncService {
               name:      resolvedName,
               phone:     sample.number ?? phone,
               timestamp: sample.timestamp ?? DateTime.now().millisecondsSinceEpoch,
+              duration:  sample.duration ?? 0,
             ),
             ...skippedLeads.value,
           ];
@@ -233,6 +234,7 @@ class LeadSyncService {
             name:      resolvedName,
             phone:     displayPhone,
             timestamp: sample.timestamp ?? DateTime.now().millisecondsSinceEpoch,
+            duration:  sample.duration ?? 0,
           ),
           ...capturedLeads.value,
         ];
@@ -257,7 +259,7 @@ class LeadSyncService {
     final result = await _api.captureLead(
       phone:    skipped.phone,
       name:     skipped.name,
-      duration: 0,
+      duration: skipped.duration,
     );
     if (result == null) return false;
 
@@ -270,6 +272,7 @@ class LeadSyncService {
         name:      skipped.name,
         phone:     skipped.phone,
         timestamp: DateTime.now().millisecondsSinceEpoch,
+        duration:  skipped.duration,
       ),
       ...capturedLeads.value,
     ];
