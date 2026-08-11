@@ -164,21 +164,13 @@ class _SkippedLeadTileState extends State<_SkippedLeadTile> {
     }
 
     setState(() => _sending = true);
-    final success = await LeadSyncService.instance.convertSkippedToLead(widget.lead);
+    final result = await LeadSyncService.instance.convertSkippedToLead(widget.lead);
     if (!mounted) return;
 
     ScaffoldMessenger.of(context).clearSnackBars();
-    if (success) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${widget.lead.name} sent as a lead'),
-          backgroundColor: const Color(0xFF2E7D32),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      // No need to reset _sending — this tile is removed from the list once
-      // skippedLeads updates, since the parent rebuilds via ValueListenableBuilder.
-    } else {
+
+    if (result == null) {
+      // Hard failure — offline mid-request, timeout, or a non-200/validation error.
       setState(() => _sending = false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -187,7 +179,28 @@ class _SkippedLeadTileState extends State<_SkippedLeadTile> {
           behavior: SnackBarBehavior.floating,
         ),
       );
+      return;
     }
+
+    final message = result.message ??
+        (result.leadCreated ? 'Lead created' : 'Lead not created');
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: result.leadCreated
+            ? const Color(0xFF2E7D32)
+            : Colors.orange.shade800,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+
+    if (!result.leadCreated) {
+      // Entry stays in the Skipped list — allow another attempt.
+      setState(() => _sending = false);
+    }
+    // If leadCreated is true, this tile is removed from the list once
+    // skippedLeads updates, since the parent rebuilds via ValueListenableBuilder
+    // — no need to reset _sending on a widget that's about to be disposed.
   }
 
   @override

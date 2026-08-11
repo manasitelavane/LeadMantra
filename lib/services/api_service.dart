@@ -7,6 +7,13 @@ import '../core/app_config.dart';
 import '../models/remote_lead.dart';
 import 'auth_service.dart';
 
+class CaptureLeadResult {
+  const CaptureLeadResult({required this.leadCreated, this.message});
+
+  final bool    leadCreated;
+  final String? message;
+}
+
 class ApiService {
   static const _captureLeadUrl = ApiEndpoints.captureCallLead;
   static const _timeout = Duration(seconds: 30);
@@ -14,7 +21,7 @@ class ApiService {
   final http.Client _client;
   ApiService({http.Client? client}) : _client = client ?? http.Client();
 
-  Future<String?> captureLead({
+  Future<CaptureLeadResult?> captureLead({
     required String phone,
     String?        name,
     required int   duration,
@@ -62,9 +69,12 @@ class ApiService {
 
       try {
         final json = jsonDecode(res.body) as Map<String, dynamic>;
-        return json['message'] as String?;
+        return CaptureLeadResult(
+          leadCreated: json['lead_created'] as bool? ?? true,
+          message:     json['message'] as String?,
+        );
       } catch (_) {
-        return null;
+        return const CaptureLeadResult(leadCreated: true);
       }
     } catch (e) {
       print('[API] captureLead error: $e');

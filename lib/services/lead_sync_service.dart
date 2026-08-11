@@ -221,7 +221,7 @@ class LeadSyncService {
           continue;
         }
 
-        // Only mark handled once the lead is confirmed captured server-side.
+        // Only mark handled once the server has confirmed the outcome.
         for (final e in entries) {
           _uploadedIds.add(_callId(e));
         }
@@ -229,16 +229,18 @@ class LeadSyncService {
         _handledNumbers.add(phone);
         await _saveHandledNumbers();
 
-        capturedLeads.value = [
-          CapturedLead(
-            name:      resolvedName,
-            phone:     displayPhone,
-            timestamp: sample.timestamp ?? DateTime.now().millisecondsSinceEpoch,
-            duration:  sample.duration ?? 0,
-          ),
-          ...capturedLeads.value,
-        ];
-        await _saveCapturedLeads();
+        if (result.leadCreated) {
+          capturedLeads.value = [
+            CapturedLead(
+              name:      resolvedName,
+              phone:     displayPhone,
+              timestamp: sample.timestamp ?? DateTime.now().millisecondsSinceEpoch,
+              duration:  sample.duration ?? 0,
+            ),
+            ...capturedLeads.value,
+          ];
+          await _saveCapturedLeads();
+        }
       }
 
       print('[SYNC] Done — handled numbers: ${_handledNumbers.length}, captured: ${capturedLeads.value.length}');
@@ -254,14 +256,17 @@ class LeadSyncService {
   /// Sends a previously-skipped number as a lead now. This is the second (and
   /// only other) place in the app that ever calls the capture-lead API — the
   /// first being the "Send Lead" button in the popup dialog above.
-  /// Returns true only once the server has confirmed the lead was created.
-  Future<bool> convertSkippedToLead(CapturedLead skipped) async {
+  /// Returns null only on a hard failure (offline, timeout, non-200/validation
+  /// error) — otherwise returns the server's result, which the caller uses to
+  /// show the actual `lead_created` outcome/message in a snackbar.
+  Future<CaptureLeadResult?> convertSkippedToLead(CapturedLead skipped) async {
     final result = await _api.captureLead(
       phone:    skipped.phone,
       name:     skipped.name,
       duration: skipped.duration,
     );
-    if (result == null) return false;
+    if (result == null) return null;
+    if (!result.leadCreated) return result;
 
     skippedLeads.value =
         skippedLeads.value.where((l) => l.phone != skipped.phone).toList();
@@ -277,7 +282,7 @@ class LeadSyncService {
       ...capturedLeads.value,
     ];
     await _saveCapturedLeads();
-    return true;
+    return result;
   }
 
   // ── Confirmation dialog ─────────────────────────────────────────────────────
